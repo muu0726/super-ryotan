@@ -189,19 +189,6 @@ function updateStep() {
       } else if (b.kind === 'bump') {
         bumps.set(`${b.tx},${b.ty}`, 0);
         sfxBump();
-      } else if (b.kind === 'break') {
-        sfxBreak();
-        // レンガ破片を飛び散らせる
-        for (let i = 0; i < 4; i++) {
-          particles.push({
-            x: b.tx * TILE + TILE / 2, y: b.ty * TILE + TILE / 2,
-            vx: (i % 2 === 0 ? -1.5 : 1.5) * (Math.random() * 0.5 + 0.8),
-            vy: -3.5 - Math.random() * 2,
-            t: 0, life: 40, kind: 'debris',
-            rot: Math.random() * Math.PI * 2,
-            rotV: (Math.random() * 2 - 1) * 0.1
-          });
-        }
       }
     }
     for (const c of events.coins) {

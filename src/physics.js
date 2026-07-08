@@ -161,13 +161,7 @@ export function updatePhysics(player, input, level) {
             events.bumped.push({ tx, ty: hit.ty, kind: 'item' });
             break;
           } else if (tile === 'B') {
-            // ダッシュ中の衝突ならブロック破壊、そうでなければ跳ね返り
-            if (input.dash && Math.abs(player.vx) > 3.0) {
-              level.setTile(tx, hit.ty, '.');
-              events.bumped.push({ tx, ty: hit.ty, kind: 'break' });
-            } else {
-              events.bumped.push({ tx, ty: hit.ty, kind: 'bump' });
-            }
+            events.bumped.push({ tx, ty: hit.ty, kind: 'bump' });
             break;
           }
         }
