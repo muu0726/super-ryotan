@@ -615,6 +615,12 @@ fitStage();
 window.addEventListener('resize', fitStage);
 window.addEventListener('orientationchange', fitStage);
 
+// E2Eテスト・デバッグ用の状態フック
+window.__game = {
+  player,
+  state: () => ({ mode, stageNum, coins, camX }),
+};
+
 // ?stage=N で直接ステージ開始 (動作確認・共有用)
 const directStage = parseInt(new URLSearchParams(location.search).get('stage'), 10);
 if (Number.isFinite(directStage) && directStage >= 1 && directStage <= LEVEL_COUNT) {
