@@ -46,6 +46,8 @@ const player = {
   jumpCut: false,
   jumpHeldPrev: false,
   riseFrames: 0,
+  coyoteFrames: 0,
+  jumpBufferFrames: 0,
   skidding: false,
   animDist: 0,
   deathVy: 0,
@@ -98,6 +100,8 @@ function respawn() {
   player.jumping = false;
   player.jumpCut = false;
   player.jumpHeldPrev = true; // ボタン押しっぱなしの即ジャンプ暴発防止
+  player.coyoteFrames = 0;
+  player.jumpBufferFrames = 0;
   player.skidding = false;
   player.deathRot = 0;
 }

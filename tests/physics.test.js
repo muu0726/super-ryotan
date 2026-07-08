@@ -5,6 +5,7 @@ import {
   V_WALK_MAX,
   V_DASH_MAX,
   JUMP_V,
+  JUMP_V_DASH,
   G_RISE,
   G_FALL
 } from '../src/physics.js';
@@ -168,14 +169,114 @@ describe('physics.js - マリオ物理演算の検証', () => {
       level.enemies = [enemy];
 
       // プレイヤーと敵が横並びで重なる (落下中ではない)
-      player.x = 40; 
+      player.x = 40;
       player.y = 32;
       player.vy = 0;
-      
+
       const events = updatePhysics(player, input, level);
-      
+
       expect(enemy.dead).toBe(false);
       expect(events.spike).toBe(true); // ミス/棘と同一扱いの死亡フラグ
+    });
+  });
+
+  describe('4. 走行連動ジャンプ・コヨーテタイム・先行入力', () => {
+    it('ダッシュ速度でジャンプすると初速が強化されること (SMB準拠)', () => {
+      player.vx = V_DASH_MAX;
+      input.right = true;
+      input.dash = true;
+      input.jump = true;
+      const events = updatePhysics(player, input, level);
+      expect(events.jumped).toBe(true);
+      expect(player.vy).toBe(JUMP_V_DASH + G_RISE);
+    });
+
+    it('歩行速度以下のジャンプは通常初速のままであること', () => {
+      player.vx = V_WALK_MAX;
+      input.right = true;
+      input.jump = true;
+      updatePhysics(player, input, level);
+      expect(player.vy).toBe(JUMP_V + G_RISE);
+    });
+
+    it('崖を離れた直後 (コヨーテタイム内) でもジャンプできること', () => {
+      const airLevel = { ...level, tileAt: () => '.' };
+      // 足場が消えて3フレーム落下 (猶予5F以内)
+      updatePhysics(player, input, airLevel);
+      updatePhysics(player, input, airLevel);
+      updatePhysics(player, input, airLevel);
+      input.jump = true;
+      const events = updatePhysics(player, input, airLevel);
+      expect(events.jumped).toBe(true);
+      expect(player.vy).toBeLessThan(0);
+    });
+
+    it('コヨーテ猶予を過ぎたら空中ではジャンプできないこと', () => {
+      const airLevel = { ...level, tileAt: () => '.' };
+      for (let i = 0; i < 8; i++) updatePhysics(player, input, airLevel);
+      input.jump = true;
+      const events = updatePhysics(player, input, airLevel);
+      expect(events.jumped).toBeUndefined();
+      expect(player.vy).toBeGreaterThan(0);
+    });
+
+    it('着地直前のジャンプ入力が先行受付され、着地後に自動でジャンプすること', () => {
+      // 地面上面 (y=256) の少し上から落下しながらボタンを押す
+      player.y = 8 * TILE - player.h - 10;
+      player.onGround = false;
+      player.vy = 3.0;
+      input.jump = true; // 空中で押す (エッジ)
+      updatePhysics(player, input, level);
+      let jumped = false;
+      for (let i = 0; i < 5; i++) {
+        const events = updatePhysics(player, input, level); // 押しっぱなし
+        if (events.jumped) { jumped = true; break; }
+      }
+      expect(jumped).toBe(true);
+      expect(player.vy).toBeLessThan(0);
+    });
+  });
+
+  describe('5. すり抜け床 (=)', () => {
+    const platLevel = () => ({
+      ...level,
+      enemies: [],
+      tileAt: (tx, ty) => (ty === 5 ? '=' : ty >= 8 ? '#' : '.'),
+    });
+
+    it('下から上昇中はすり抜けて天井扱いにならないこと', () => {
+      const lvl = platLevel();
+      player.y = 6 * TILE + 2; // 床のすぐ下
+      player.onGround = false;
+      player.jumping = true;
+      player.jumpHeldPrev = true;
+      player.vy = -6.0;
+      input.jump = true;
+      const before = player.y;
+      updatePhysics(player, input, lvl);
+      expect(player.y).toBeLessThan(before); // 上へ抜けている
+      expect(player.vy).toBeLessThan(0);     // 止められていない
+    });
+
+    it('上から落下すると床上面に着地すること', () => {
+      const lvl = platLevel();
+      player.y = 5 * TILE - player.h - 6; // 床上面の6px上
+      player.onGround = false;
+      player.vy = 7.0;
+      updatePhysics(player, input, lvl);
+      expect(player.onGround).toBe(true);
+      expect(player.vy).toBe(0);
+      expect(player.y + player.h).toBeCloseTo(5 * TILE - 0.2, 1);
+    });
+
+    it('床の上に立ち続けられること (接地が維持される)', () => {
+      const lvl = platLevel();
+      player.y = 5 * TILE - player.h - 6;
+      player.onGround = false;
+      player.vy = 7.0;
+      for (let i = 0; i < 30; i++) updatePhysics(player, input, lvl);
+      expect(player.onGround).toBe(true);
+      expect(player.y + player.h).toBeLessThanOrEqual(5 * TILE);
     });
   });
 });

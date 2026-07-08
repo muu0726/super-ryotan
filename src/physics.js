@@ -15,14 +15,57 @@ export const D_X = 0.3;          // ブレーキ減速 (逆キー入力時 = 加
 export const G_RISE = 0.28;      // 上昇時重力 2α/t²
 export const G_FALL = 0.56;      // 落下時重力 (上昇の2倍)
 export const JUMP_V = -6.7;      // 初速 -√(2αγ)
+export const JUMP_V_DASH = -7.5; // 走行時の強化ジャンプ初速 (SMB準拠: 速度でジャンプ力が伸びる)
+export const DASH_JUMP_SPEED = 3.5; // この水平速度以上で強化ジャンプが発動
 export const MAX_RISE_FRAMES = 24;
 export const TERMINAL_V = 8.0;   // 終端速度 (床すり抜け防止)
+
+// ---- 操作の手触り (モダンQoL) ----
+export const COYOTE_FRAMES = 5;      // 崖を離れた後もジャンプを受け付ける猶予フレーム
+export const JUMP_BUFFER_FRAMES = 6; // 着地前のジャンプ入力の先行受付フレーム
 
 // ---- 当たり判定 ----
 const INSET = 0.2;               // 継ぎ目スタック対策のコライダー縮小量
 
 function isSolid(ch) {
-  return ch === '#' || ch === '=' || ch === 'B' || ch === '?' || ch === 'U';
+  return ch === '#' || ch === 'B' || ch === '?' || ch === 'U';
+}
+
+// '=' は一方通行のすり抜け床: 上からのみ着地でき、下・横からは通り抜ける
+function isOneWay(ch) {
+  return ch === '=';
+}
+
+/**
+ * すり抜け床への着地判定。落下中に足が床上面をまたいだフレームのみ成立する。
+ * body = { x, y, w, h, vy } (プレイヤー・敵で共用)
+ */
+function oneWayLanding(level, body) {
+  const bottom = body.y + body.h;
+  const prevBottom = bottom - body.vy;
+  const ty = Math.floor((bottom - INSET) / TILE);
+  const rowTop = ty * TILE;
+  if (bottom < rowTop) return null;
+  if (prevBottom > rowTop + INSET * 2) return null; // 前フレームで既に上面より下 → すり抜け
+  const x0 = Math.floor((body.x + INSET) / TILE);
+  const x1 = Math.floor((body.x + body.w - INSET) / TILE);
+  for (let tx = x0; tx <= x1; tx++) {
+    if (isOneWay(level.tileAt(tx, ty))) return { tx, ty };
+  }
+  return null;
+}
+
+// すり抜け床の上に立っているか (接地維持の確認用)
+function oneWaySupport(level, body) {
+  const footY = body.y + body.h + 1;
+  const ty = Math.floor(footY / TILE);
+  if (body.y + body.h > ty * TILE + 4) return false; // 上面付近にいる時のみ
+  const x0 = Math.floor((body.x + INSET) / TILE);
+  const x1 = Math.floor((body.x + body.w - INSET) / TILE);
+  for (let tx = x0; tx <= x1; tx++) {
+    if (isOneWay(level.tileAt(tx, ty))) return true;
+  }
+  return false;
 }
 
 /**
@@ -89,17 +132,32 @@ export function updatePhysics(player, input, level) {
     }
   }
 
-  // ---------- ジャンプ (可変ジャンプ制御) ----------
-  if (input.jump) {
-    if (player.onGround && !player.jumpHeldPrev) {
-      player.vy = JUMP_V;
-      player.onGround = false;
-      player.jumping = true;
-      player.riseFrames = 0;
-      player.jumpCut = false;
-      events.jumped = true;
-    }
-  } else if (player.jumping && !player.jumpCut && player.vy < 0) {
+  // ---------- ジャンプ (可変ジャンプ + コヨーテタイム + 先行入力) ----------
+  // コヨーテタイム: 崖を離れた直後もしばらくジャンプ可能
+  if (player.onGround) {
+    player.coyoteFrames = COYOTE_FRAMES;
+  } else {
+    player.coyoteFrames = Math.max(0, (player.coyoteFrames || 0) - 1);
+  }
+  // 先行入力: 押した瞬間から一定フレーム、着地時のジャンプとして受け付ける
+  if (input.jump && !player.jumpHeldPrev) {
+    player.jumpBufferFrames = JUMP_BUFFER_FRAMES;
+  } else {
+    player.jumpBufferFrames = Math.max(0, (player.jumpBufferFrames || 0) - 1);
+  }
+
+  if (player.jumpBufferFrames > 0 && !player.jumping &&
+      (player.onGround || player.coyoteFrames > 0)) {
+    // 走行速度に応じてジャンプ初速を強化 (SMB準拠)
+    player.vy = Math.abs(player.vx) >= DASH_JUMP_SPEED ? JUMP_V_DASH : JUMP_V;
+    player.onGround = false;
+    player.jumping = true;
+    player.riseFrames = 0;
+    player.jumpCut = false;
+    player.coyoteFrames = 0;
+    player.jumpBufferFrames = 0;
+    events.jumped = true;
+  } else if (!input.jump && player.jumping && !player.jumpCut && player.vy < 0) {
     // ボタン早期リリース → 上昇速度を50%に減衰し惰性上昇へ
     player.vy *= 0.5;
     player.jumpCut = true;
@@ -168,13 +226,23 @@ export function updatePhysics(player, input, level) {
         if (events.bumped.length === 0) events.headBonk = true;
       }
     } else if (player.vy > 0) {
-      player.onGround = false;
+      // すり抜け床への着地 (上からのみ)
+      const ow = oneWayLanding(level, player);
+      if (ow) {
+        player.y = ow.ty * TILE - player.h - INSET;
+        player.vy = 0;
+        player.onGround = true;
+        player.jumping = false;
+      } else {
+        player.onGround = false;
+      }
     }
   }
 
-  // 接地確認 (足元1px下にソリッドがあるか)
+  // 接地確認 (足元1px下にソリッド or すり抜け床上面があるか)
   if (player.vy === 0 && player.onGround) {
-    const below = collidesSolid(level, player.x, player.y + 1, player.w, player.h);
+    const below = collidesSolid(level, player.x, player.y + 1, player.w, player.h) ||
+      oneWaySupport(level, player);
     if (!below) player.onGround = false;
   }
 
@@ -203,7 +271,7 @@ export function updatePhysics(player, input, level) {
       e.vx *= -1; // 反転
     }
 
-    // Y軸移動と衝突判定
+    // Y軸移動と衝突判定 (すり抜け床にも上からは着地する)
     e.y += e.vy;
     let hitY = collidesSolid(level, e.x, e.y, e.w, e.h);
     if (hitY) {
@@ -216,14 +284,22 @@ export function updatePhysics(player, input, level) {
         e.vy = 0;
       }
     } else {
-      e.onGround = false;
+      const ow = e.vy > 0 ? oneWayLanding(level, e) : null;
+      if (ow) {
+        e.y = ow.ty * TILE - e.h - INSET;
+        e.vy = 0;
+        e.onGround = true;
+      } else {
+        e.onGround = false;
+      }
     }
 
     // 崖の手前で反転するAI (穴に落ちないようにする)
     if (e.onGround) {
       const checkY = e.y + e.h + 2; // 足元少し下
       const edgeX = e.vx > 0 ? (e.x + e.w + 4) : (e.x - 4);
-      const tileBelow = collidesSolid(level, edgeX, checkY, 2, 2);
+      const tileBelow = collidesSolid(level, edgeX, checkY, 2, 2) ||
+        isOneWay(level.tileAt(Math.floor(edgeX / TILE), Math.floor(checkY / TILE)));
       if (!tileBelow) {
         e.vx *= -1; // 崖っぷちで反転
       }
