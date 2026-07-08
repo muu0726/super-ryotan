@@ -105,3 +105,16 @@ export function sfxClear() {
 export function sfxSelect() {
   tone({ type: 'square', from: 660, to: 990, dur: 0.08, vol: 0.4 });
 }
+
+// ---- 敵踏みつけ音 ----
+export function sfxKick() {
+  tone({ type: 'triangle', from: 300, to: 80, dur: 0.12, vol: 0.75 });
+  noise({ dur: 0.1, vol: 0.45, low: 600 });
+}
+
+// ---- ブロック破壊音 ----
+export function sfxBreak() {
+  noise({ dur: 0.15, vol: 0.8, low: 300 });
+  tone({ type: 'triangle', from: 150, to: 40, dur: 0.14, vol: 0.7 });
+}
+

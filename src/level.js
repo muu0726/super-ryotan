@@ -20,7 +20,7 @@ const LEVEL_1 = [
   D(71) + 'ooo',
   D(15) + '?.?.?',
   D(70) + '=====',
-  D(3) + 'S' + D(25) + 'ooooo' + D(20) + 'ooooo' + D(33) + 'G',
+  D(3) + 'S' + D(12) + 'E' + D(10) + 'ooooo' + D(12) + 'E' + D(5) + 'ooooo' + D(33) + 'G',
   L1_GROUND,
   L1_GROUND,
 ];
@@ -34,8 +34,8 @@ const LEVEL_2 = [
   '',
   '',
   D(50) + '?' + D(23) + 'ooo',
-  D(26) + '####' + D(30) + 'ooo',
-  D(3) + 'S' + D(16) + '##########' + D(10) + 'HHH' + D(17) + 'HHH' + D(37) + 'G',
+  D(24) + 'E' + D(1) + '####' + D(30) + 'ooo',
+  D(3) + 'S' + D(16) + '##########' + D(10) + 'HHH' + D(8) + 'E' + D(8) + 'HHH' + D(37) + 'G',
   L2_GROUND,
   L2_GROUND,
 ];
@@ -50,7 +50,7 @@ const LEVEL_3 = [
   D(27) + 'oooo' + D(3) + 'oooo' + D(41) + 'oooo' + D(3) + 'oooo',
   D(55) + '??',
   D(27) + '====' + D(3) + '====' + D(3) + '=====' + D(26) + '====' + D(3) + '====' + D(3) + '=====',
-  D(3) + 'S' + D(100) + 'G',
+  D(3) + 'S' + D(10) + 'E' + D(45) + 'E' + D(41) + 'G',
   L3_GROUND,
   L3_GROUND,
 ];
@@ -67,7 +67,7 @@ const LEVEL_4 = [
   '',
   D(83) + '?',
   D(47) + 'ooo' + D(14) + 'ooo' + D(6) + 'ooo',
-  D(3) + 'S' + D(84) + 'HHH' + D(14) + 'G',
+  D(3) + 'S' + D(5) + 'E' + D(75) + 'E' + D(1) + 'HHH' + D(14) + 'G',
   L4_GROUND,
   L4_GROUND,
 ];
@@ -88,7 +88,7 @@ const LEVEL_5 = [
   L5_PILLAR,
   D(15) + '?' + D(29) + 'ooo' + D(25) + 'ooo',
   D(20) + 'oo' + D(48) + 'oo',
-  D(3) + 'S' + D(34) + 'HH' + D(26) + 'HHH' + D(32) + 'G',
+  D(3) + 'S' + D(18) + 'E' + D(14) + 'HH' + D(22) + 'E' + D(3) + 'HHH' + D(32) + 'G',
   L5_GROUND,
   L5_GROUND,
 ];
@@ -103,7 +103,7 @@ const LEVEL_6 = [
   D(39) + 'ooo' + D(11) + 'ooo' + D(11) + 'ooo',
   D(78) + '?',
   D(32) + '===' + D(4) + '===' + D(4) + '===' + D(4) + '===' + D(4) + '===' + D(4) + '===',
-  D(3) + 'S' + D(26) + 'H'.repeat(42) + D(13) + 'HHH' + D(14) + 'G',
+  D(3) + 'S' + D(14) + 'E' + D(10) + 'H'.repeat(42) + D(13) + 'E' + D(12) + 'HHH' + D(14) + 'G',
   L6_GROUND,
   L6_GROUND,
 ];
@@ -118,7 +118,7 @@ const LEVEL_7 = [
   D(29) + W(15),
   D(26) + W(21) + D(48) + '?.?',
   D(23) + W(27) + D(11) + '===',
-  D(3) + 'S' + D(16) + W(33) + D(22) + 'HHH' + D(7) + 'HHH' + D(24) + 'G',
+  D(3) + 'S' + D(11) + 'E' + D(4) + W(33) + D(22) + 'HHH' + D(2) + 'E' + D(4) + 'HHH' + D(24) + 'G',
   L7_GROUND,
   L7_GROUND,
 ];
@@ -133,7 +133,7 @@ const LEVEL_8 = [
   '',
   D(20) + '??',
   D(40) + 'oooo' + D(26) + 'oooo' + D(21) + 'oooo',
-  D(3) + 'S' + D(51) + 'HH' + D(28) + 'HH' + D(30) + 'G',
+  D(3) + 'S' + D(21) + 'E' + D(29) + 'HH' + D(15) + 'E' + D(11) + 'HH' + D(30) + 'G',
   L8_GROUND,
   L8_GROUND,
 ];
@@ -143,13 +143,13 @@ const L9_GROUND = W(20) + D(79) + W(11);
 const LEVEL_9 = [
   '', '', '', '',
   '',
-  D(35) + 'oo' + D(5) + 'oo',
+  D(33) + 'E' + D(1) + 'oo' + D(5) + 'oo',
   D(34) + '====' + D(3) + '====',
   D(48) + '====' + D(3) + '====',
   D(28) + '====' + D(29) + 'oo',
   D(10) + '?' + D(50) + '====' + D(3) + '====',
   D(22) + '====' + D(48) + '====' + D(2) + '====' + D(2) + '====' + D(2) + '====',
-  D(3) + 'S' + D(101) + 'G',
+  D(3) + 'S' + D(6) + 'E' + D(91) + 'G',
   L9_GROUND,
   L9_GROUND,
 ];
@@ -164,10 +164,11 @@ const LEVEL_10 = [
   D(77) + '===' + D(20) + 'ooo',
   D(60) + '?.?',
   D(40) + '##' + D(9) + '===' + D(18) + '===' + D(8) + '===' + D(3) + '===' + D(7) + '===' + D(4) + '===',
-  D(3) + 'S' + D(11) + 'HH' + D(5) + 'HH' + D(16) + '##' + D(2) + 'HH' + D(19) + 'HH' + D(33) + 'HHH' + D(4) + 'HHH' + D(14) + 'G',
+  D(3) + 'S' + D(11) + 'HH' + D(3) + 'E' + D(1) + 'HH' + D(16) + '##' + D(2) + 'HH' + D(12) + 'E' + D(5) + 'HH' + D(33) + 'HHH' + D(1) + 'E' + D(2) + 'HHH' + D(14) + 'G',
   L10_GROUND,
   L10_GROUND,
 ];
+
 
 const RAW_LEVELS = [
   LEVEL_1, LEVEL_2, LEVEL_3, LEVEL_4, LEVEL_5,
@@ -192,8 +193,9 @@ export class Level {
     this.startX = TILE * 2;
     this.startY = TILE * 10;
     this.cameraX = 0;
+    this.enemies = []; // 敵のリスト
 
-    // スタート位置とゴールポールの検出
+    // スタート位置、ゴールポール、敵の検出
     for (let y = 0; y < this.height; y++) {
       for (let x = 0; x < this.width; x++) {
         const ch = this.grid[y][x];
@@ -210,6 +212,19 @@ export class Level {
               this.grid[y - dy][x] = 'g';
             }
           }
+        } else if (ch === 'E') {
+          // 敵をスポーンさせる (幅24px、高さ24px)
+          this.enemies.push({
+            x: x * TILE + (TILE - 24) / 2,
+            y: y * TILE + (TILE - 24) - 0.2, // 地面にぴったり接地
+            w: 24, h: 24,
+            vx: -0.7, vy: 0,
+            onGround: false,
+            dead: false,
+            deadTimer: 0,
+            animTime: 0
+          });
+          this.grid[y][x] = '.';
         }
       }
     }
@@ -252,3 +267,29 @@ export function saveProgress(maxStage) {
     // localStorage 不可 (プライベートモード等) でもゲームは続行
   }
 }
+
+// ---- タイムアタック記録のセーブ (localStorage) ----
+const TIME_KEY_PREFIX = 'super-ryotan-time-v1-';
+
+export function loadBestTime(stageNum) {
+  try {
+    const val = localStorage.getItem(TIME_KEY_PREFIX + stageNum);
+    return val !== null ? parseFloat(val) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveBestTime(stageNum, seconds) {
+  try {
+    const cur = loadBestTime(stageNum);
+    if (cur === null || seconds < cur) {
+      localStorage.setItem(TIME_KEY_PREFIX + stageNum, String(seconds));
+      return true; // 新記録
+    }
+  } catch {
+    // localStorage不可でも無視
+  }
+  return false;
+}
+

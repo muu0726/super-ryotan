@@ -151,13 +151,23 @@ export function updatePhysics(player, input, level) {
         player.y = (hit.ty + 1) * TILE + INSET;
         player.vy = 0;
         player.jumping = false;
-        // 頭上のハテナブロックを叩く (頭の中心に最も近いものを1つ)
+        // 頭上のブロックを叩く (ハテナブロック or レンガ)
         const headX = player.x + player.w / 2;
         const cx = Math.floor(headX / TILE);
         for (const tx of [cx, cx - 1, cx + 1]) {
-          if (level.tileAt(tx, hit.ty) === '?') {
+          const tile = level.tileAt(tx, hit.ty);
+          if (tile === '?') {
             level.setTile(tx, hit.ty, 'U');
-            events.bumped.push({ tx, ty: hit.ty });
+            events.bumped.push({ tx, ty: hit.ty, kind: 'item' });
+            break;
+          } else if (tile === 'B') {
+            // ダッシュ中の衝突ならブロック破壊、そうでなければ跳ね返り
+            if (input.dash && Math.abs(player.vx) > 3.0) {
+              level.setTile(tx, hit.ty, '.');
+              events.bumped.push({ tx, ty: hit.ty, kind: 'break' });
+            } else {
+              events.bumped.push({ tx, ty: hit.ty, kind: 'bump' });
+            }
             break;
           }
         }
@@ -172,6 +182,78 @@ export function updatePhysics(player, input, level) {
   if (player.vy === 0 && player.onGround) {
     const below = collidesSolid(level, player.x, player.y + 1, player.w, player.h);
     if (!below) player.onGround = false;
+  }
+
+  // ---------- 敵の更新と衝突判定 ----------
+  for (const e of level.enemies) {
+    if (e.dead) {
+      if (e.deadTimer > 0) e.deadTimer--;
+      continue;
+    }
+
+    e.animTime++;
+
+    // 敵の重力適用
+    e.vy += G_FALL;
+    if (e.vy > TERMINAL_V) e.vy = TERMINAL_V;
+
+    // X軸移動と衝突判定
+    e.x += e.vx;
+    let hitX = collidesSolid(level, e.x, e.y, e.w, e.h);
+    if (hitX) {
+      if (e.vx > 0) {
+        e.x = hitX.tx * TILE - e.w - INSET;
+      } else {
+        e.x = (hitX.tx + 1) * TILE + INSET;
+      }
+      e.vx *= -1; // 反転
+    }
+
+    // Y軸移動と衝突判定
+    e.y += e.vy;
+    let hitY = collidesSolid(level, e.x, e.y, e.w, e.h);
+    if (hitY) {
+      if (e.vy > 0) {
+        e.y = hitY.ty * TILE - e.h - INSET;
+        e.vy = 0;
+        e.onGround = true;
+      } else {
+        e.y = (hitY.ty + 1) * TILE + INSET;
+        e.vy = 0;
+      }
+    } else {
+      e.onGround = false;
+    }
+
+    // 崖の手前で反転するAI (穴に落ちないようにする)
+    if (e.onGround) {
+      const checkY = e.y + e.h + 2; // 足元少し下
+      const edgeX = e.vx > 0 ? (e.x + e.w + 4) : (e.x - 4);
+      const tileBelow = collidesSolid(level, edgeX, checkY, 2, 2);
+      if (!tileBelow) {
+        e.vx *= -1; // 崖っぷちで反転
+      }
+    }
+
+    // プレイヤーとの衝突判定
+    if (player.x + player.w > e.x && player.x < e.x + e.w &&
+        player.y + player.h > e.y && player.y < e.y + e.h) {
+      const isFalling = player.vy > 0;
+      const feetAboveMiddle = (player.y + player.h - player.vy) <= (e.y + e.h / 2);
+
+      if (isFalling && feetAboveMiddle) {
+        e.dead = true;
+        e.deadTimer = 30; // 30フレーム表示
+        e.vx = 0;
+        player.vy = -5.0; // 踏みつけ跳ね返り
+        player.jumping = true;
+        player.riseFrames = 0;
+        player.jumpCut = false;
+        events.stomped = true;
+      } else {
+        events.spike = true; // 死亡
+      }
+    }
   }
 
   // ---------- 非ソリッドタイルとの接触 (コイン・トゲ・ゴール) ----------
@@ -196,3 +278,4 @@ export function updatePhysics(player, input, level) {
 
   return events;
 }
+

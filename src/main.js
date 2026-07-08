@@ -4,11 +4,11 @@
 
 import './style.css';
 import { initInput, input } from './input.js';
-import { TILE, G_FALL, updatePhysics } from './physics.js';
-import { Level, LEVEL_COUNT, LEVEL_NAMES, loadProgress, saveProgress } from './level.js';
+import { TILE, G_FALL, updatePhysics, V_WALK_MAX } from './physics.js';
+import { Level, LEVEL_COUNT, LEVEL_NAMES, loadProgress, saveProgress, loadBestTime, saveBestTime } from './level.js';
 import {
   unlockAudio, sfxJump, sfxCoin, sfxBump, sfxBlock,
-  sfxDeath, sfxClear, sfxSelect,
+  sfxDeath, sfxClear, sfxSelect, sfxKick, sfxBreak
 } from './audio.js';
 
 const VIEW_W = 800;
@@ -18,7 +18,7 @@ const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 ctx.imageSmoothingEnabled = true; // 高解像度スプライトの縮小描画のため有効
 
-// ---- スプライトシート (public/キャラクター.png) ----
+// ---- スプライトシート (public/character.png) ----
 // 背景透過処理済みシートから各ポーズを切り出す (実測座標)
 const SPRITE_FRAMES = {
   idle: { x: 35, y: 27, w: 274, h: 430 },
@@ -30,7 +30,8 @@ const SPRITE_FRAMES = {
 const sprite = new Image();
 let spriteReady = false;
 sprite.onload = () => { spriteReady = true; };
-sprite.src = import.meta.env.BASE_URL + encodeURIComponent('キャラクター.png');
+sprite.src = import.meta.env.BASE_URL + encodeURIComponent('character.png');
+
 
 // ---- プレイヤー ----
 const PLAYER_W = 24;
@@ -60,6 +61,9 @@ let camX = 0;
 let clearTimer = 0;
 let stageToast = 0;
 let elapsed = 0; // 描画演出用フレームカウンタ
+let playTimer = 0; // プレイ時間 (フレーム)
+let newRecord = false;
+let bestTimeForStage = null;
 
 const bumps = new Map(); // "tx,ty" -> 経過フレーム (ブロック叩きアニメ)
 let particles = []; // コインポップ演出
@@ -77,6 +81,9 @@ function loadStage(n) {
   stageToast = 110;
   bumps.clear();
   particles = [];
+  playTimer = 0;
+  newRecord = false;
+  bestTimeForStage = loadBestTime(n);
   respawn();
   mode = 'play';
 }
@@ -106,6 +113,8 @@ function startClear() {
   mode = 'clear';
   clearTimer = 0;
   player.vx = 0;
+  const clearTime = playTimer / 60;
+  newRecord = saveBestTime(stageNum, clearTime);
   saveProgress(stageNum + 1);
   sfxClear();
 }
@@ -118,19 +127,82 @@ function updateStep() {
 
   if (mode === 'play') {
     level.cameraX = camX;
+    const prevOnGround = player.onGround;
     const events = updatePhysics(player, input, level);
+
+    playTimer++;
 
     if (events.jumped) sfxJump();
     if (events.headBonk) sfxBump();
+    if (events.stomped) sfxKick();
+
+    if (!prevOnGround && player.onGround) {
+      // 着地ダスト
+      for (let i = 0; i < 6; i++) {
+        particles.push({
+          x: player.x + player.w / 2,
+          y: player.y + player.h,
+          vx: (i - 2.5) * 0.4,
+          vy: -0.5 - Math.random() * 0.5,
+          t: 0,
+          life: 22,
+          kind: 'spark',
+        });
+      }
+    }
+
+    // 走行ダスト
+    if (player.onGround && Math.abs(player.vx) > V_WALK_MAX - 0.2 && elapsed % 8 === 0) {
+      particles.push({
+        x: player.x + player.w / 2 - Math.sign(player.vx) * (player.w / 2),
+        y: player.y + player.h,
+        vx: -Math.sign(player.vx) * 0.4,
+        vy: -0.4,
+        t: 0,
+        life: 20,
+        kind: 'spark',
+      });
+    }
+
+    // スリップダスト
+    if (player.skidding && elapsed % 4 === 0) {
+      particles.push({
+        x: player.x + player.w / 2,
+        y: player.y + player.h,
+        vx: (Math.random() * 2 - 1) * 0.5,
+        vy: -0.8 - Math.random() * 0.5,
+        t: 0,
+        life: 25,
+        kind: 'spark',
+      });
+    }
 
     for (const b of events.bumped) {
-      bumps.set(`${b.tx},${b.ty}`, 0);
-      coins++;
-      sfxBlock();
-      particles.push({
-        x: b.tx * TILE + TILE / 2, y: b.ty * TILE - 6,
-        vy: -3.2, t: 0, life: 34, kind: 'coin',
-      });
+      if (b.kind === 'item') {
+        bumps.set(`${b.tx},${b.ty}`, 0);
+        coins++;
+        sfxBlock();
+        particles.push({
+          x: b.tx * TILE + TILE / 2, y: b.ty * TILE - 6,
+          vy: -3.2, t: 0, life: 34, kind: 'coin',
+        });
+      } else if (b.kind === 'bump') {
+        bumps.set(`${b.tx},${b.ty}`, 0);
+        sfxBump();
+      } else if (b.kind === 'break') {
+        sfxBreak();
+        // レンガ破片を飛び散らせる
+        for (let i = 0; i < 4; i++) {
+          particles.push({
+            x: b.tx * TILE + TILE / 2, y: b.ty * TILE + TILE / 2,
+            vx: (i % 2 === 0 ? -1.5 : 1.5) * (Math.random() * 0.5 + 0.8),
+            vy: -3.5 - Math.random() * 2,
+            t: 0, life: 40, kind: 'debris',
+            rot: Math.random() * Math.PI * 2,
+            rotV: (Math.random() * 2 - 1) * 0.1
+          });
+        }
+      }
     }
     for (const c of events.coins) {
       coins++;
@@ -193,7 +265,11 @@ function updateStep() {
   particles = particles.filter((p) => {
     p.t++;
     p.y += p.vy;
-    p.vy += 0.12;
+    if (p.vx) p.x += p.vx;
+    p.vy += p.kind === 'debris' ? 0.24 : 0.12;
+    if (p.kind === 'debris' && p.rot !== undefined) {
+      p.rot += p.rotV || 0;
+    }
     return p.t < p.life;
   });
 
@@ -433,7 +509,7 @@ function drawHUD() {
   ctx.textBaseline = 'top';
   ctx.font = 'bold 15px "Segoe UI", sans-serif';
   ctx.fillStyle = 'rgba(0,0,0,0.35)';
-  ctx.fillRect(10, 10, 250, 30);
+  ctx.fillRect(10, 10, 335, 30);
   ctx.fillStyle = '#eef1ff';
   ctx.fillText(`STAGE ${stageNum}`, 20, 17);
   // コイン
@@ -443,6 +519,15 @@ function drawHUD() {
   ctx.fill();
   ctx.fillStyle = '#eef1ff';
   ctx.fillText(`× ${coins}`, 132, 17);
+
+  // タイマー
+  const timeStr = (playTimer / 60).toFixed(1);
+  ctx.fillText(`TIME ${timeStr}s`, 185, 17);
+
+  // ベストタイム
+  const bestStr = bestTimeForStage !== null ? `${bestTimeForStage.toFixed(1)}s` : '--';
+  ctx.fillStyle = 'rgba(255, 210, 63, 0.85)';
+  ctx.fillText(`BEST ${bestStr}`, 265, 17);
 
   if (stageToast > 0 && mode === 'play') {
     const a = Math.min(1, stageToast / 30);
@@ -461,8 +546,73 @@ function drawHUD() {
     ctx.textAlign = 'center';
     ctx.font = 'bold 34px "Segoe UI", sans-serif';
     ctx.fillStyle = '#ffd23f';
-    ctx.fillText('COURSE CLEAR!', VIEW_W / 2, 150);
+    ctx.fillText('COURSE CLEAR!', VIEW_W / 2, 130);
+
+    ctx.font = 'bold 18px "Segoe UI", sans-serif';
+    ctx.fillStyle = '#eef1ff';
+    const clearTime = playTimer / 60;
+    ctx.fillText(`TIME: ${clearTime.toFixed(2)}s`, VIEW_W / 2, 175);
+
+    if (newRecord) {
+      ctx.fillStyle = '#ff5c7a';
+      ctx.font = 'bold 20px "Segoe UI", sans-serif';
+      ctx.fillText('🏆 NEW RECORD! 🏆', VIEW_W / 2, 210);
+    }
   }
+}
+
+function drawEnemy(e, cam) {
+  const rx = e.x - cam;
+  const ry = e.y;
+  if (rx < -e.w || rx > VIEW_W) return;
+
+  ctx.save();
+  ctx.translate(rx + e.w / 2, ry + e.h / 2);
+
+  if (e.dead) {
+    // 踏みつぶされた状態 (平べったい円)
+    ctx.scale(1.5, 0.2);
+    ctx.fillStyle = '#ff5c7a';
+    ctx.beginPath();
+    ctx.arc(0, 0, e.w / 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255, 92, 122, 0.5)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  } else {
+    // 歩行足のアニメ
+    const walkWave = Math.sin(e.animTime * 0.25) * 3;
+
+    // 影
+    ctx.fillStyle = 'rgba(0,0,0,0.15)';
+    ctx.beginPath();
+    ctx.ellipse(0, e.h / 2 - 1, e.w / 2 - 2, 2, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // ネオン体 (Goomba)
+    ctx.fillStyle = '#9b5de5'; // ネオンパープル
+    ctx.beginPath();
+    ctx.arc(0, -2, e.w / 2, Math.PI, 0, false); // 上半身
+    ctx.rect(-e.w / 2, -2, e.w, e.h / 2 + 2); // 下半身
+    ctx.fill();
+
+    ctx.strokeStyle = '#f15bb5'; // ピンクネオンアウトライン
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // 目 (怒り目)
+    ctx.fillStyle = '#00f5d4'; // ターコイズネオン
+    ctx.beginPath();
+    ctx.moveTo(-6, -4); ctx.lineTo(-2, -2); ctx.lineTo(-3, 0); ctx.closePath();
+    ctx.moveTo(6, -4); ctx.lineTo(2, -2); ctx.lineTo(3, 0); ctx.closePath();
+    ctx.fill();
+
+    // 足
+    ctx.fillStyle = '#3a0ca3';
+    ctx.fillRect(-8 + walkWave, e.h / 2 - 4, 6, 4);
+    ctx.fillRect(2 - walkWave, e.h / 2 - 4, 6, 4);
+  }
+  ctx.restore();
 }
 
 function draw(renderX, renderY, renderCam) {
@@ -478,6 +628,14 @@ function draw(renderX, renderY, renderCam) {
   }
   drawGoal(renderCam);
   drawParticles(renderCam);
+
+  // 敵キャラの描画
+  if (level && level.enemies) {
+    for (const e of level.enemies) {
+      drawEnemy(e, renderCam);
+    }
+  }
+
   drawPlayer(renderX - renderCam, renderY);
   drawHUD();
 }
@@ -497,7 +655,7 @@ function gameLoop(timestamp) {
   let deltaTime = timestamp - lastTime;
   lastTime = timestamp;
 
-  // スパイク防止 (100ms以上のラグはクランプし、フリーズ死のスパイラルを防ぐ)
+  // スパイク防止
   if (deltaTime > 100) deltaTime = fixedTimeStep;
 
   accumulator += deltaTime;
@@ -508,7 +666,7 @@ function gameLoop(timestamp) {
     prevY = player.y;
     prevCam = camX;
 
-    if (level) updateStep(); // 物理・衝突判定 (固定ステップ)
+    if (level) updateStep();
 
     currentX = player.x;
     currentY = player.y;
@@ -516,7 +674,7 @@ function gameLoop(timestamp) {
 
     accumulator -= fixedTimeStep;
 
-    // 最大更新回数のパニック制限
+    // パニック制限
     updateCount++;
     if (updateCount > 5) {
       accumulator = 0;
@@ -524,7 +682,6 @@ function gameLoop(timestamp) {
     }
   }
 
-  // 描画補間値 alpha の算出
   if (level) {
     const alpha = accumulator / fixedTimeStep;
     const renderX = prevX * (1 - alpha) + currentX * alpha;
@@ -561,7 +718,13 @@ function buildStageGrid() {
   for (let i = 1; i <= LEVEL_COUNT; i++) {
     const btn = document.createElement('button');
     btn.className = 'stage-cell';
-    btn.textContent = i <= unlocked ? String(i) : '🔒';
+    if (i <= unlocked) {
+      const best = loadBestTime(i);
+      const timeStr = best !== null ? `⏱${best.toFixed(1)}s` : '';
+      btn.innerHTML = `<span class="num">${i}</span><span class="best-time">${timeStr}</span>`;
+    } else {
+      btn.innerHTML = '🔒';
+    }
     btn.disabled = i > unlocked;
     btn.title = i <= unlocked ? LEVEL_NAMES[i - 1] : '未解放';
     btn.addEventListener('click', () => {
@@ -601,7 +764,7 @@ function wireUI() {
 function fitStage() {
   const wrap = document.getElementById('stage-wrap');
   const scale = Math.min(window.innerWidth / VIEW_W, window.innerHeight / VIEW_H);
-  const margin = scale > 1.05 ? 0.97 : 1; // 大画面では少し余白
+  const margin = scale > 1.05 ? 0.97 : 1;
   wrap.style.width = `${Math.floor(VIEW_W * scale * margin)}px`;
   wrap.style.height = `${Math.floor(VIEW_H * scale * margin)}px`;
 }
@@ -621,7 +784,7 @@ window.__game = {
   state: () => ({ mode, stageNum, coins, camX }),
 };
 
-// ?stage=N で直接ステージ開始 (動作確認・共有用)
+// ?stage=N で直接ステージ開始
 const directStage = parseInt(new URLSearchParams(location.search).get('stage'), 10);
 if (Number.isFinite(directStage) && directStage >= 1 && directStage <= LEVEL_COUNT) {
   hideScreens();
@@ -630,3 +793,4 @@ if (Number.isFinite(directStage) && directStage >= 1 && directStage <= LEVEL_COU
   showScreen('title-screen');
 }
 requestAnimationFrame(gameLoop);
+
