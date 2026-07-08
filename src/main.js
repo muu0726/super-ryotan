@@ -455,9 +455,7 @@ function drawPlayer(rx, ry) {
   } else if (!player.onGround) {
     frame = SPRITE_FRAMES.jump;
   } else if (Math.abs(player.vx) > 0.3) {
-    frame = Math.floor(player.animDist / 14) % 2 === 0
-      ? SPRITE_FRAMES.run
-      : SPRITE_FRAMES.idle;
+    frame = SPRITE_FRAMES.run;
   } else {
     frame = SPRITE_FRAMES.idle;
   }
