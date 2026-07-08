@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b0e1a" />
+  <title>SUPER RYO-TAN</title>
+</head>
+<body>
+  <div id="app">
+    <!-- ゲーム画面 (16:9 固定) -->
+    <div id="stage-wrap">
+      <canvas id="game" width="800" height="450"></canvas>
+
+      <!-- タイトル画面 -->
+      <div id="title-screen" class="overlay screen">
+        <h1 class="game-title"><span>SUPER</span> RYO-TAN</h1>
+        <p class="subtitle">2D ACTION</p>
+        <div class="menu">
+          <button id="btn-start" class="menu-btn">最初から</button>
+          <button id="btn-select" class="menu-btn">ステージ選択</button>
+        </div>
+        <p class="hint">←→/AD: 移動&nbsp;&nbsp;Z/SPACE: ジャンプ&nbsp;&nbsp;X/SHIFT: ダッシュ</p>
+      </div>
+
+      <!-- ステージ選択画面 -->
+      <div id="select-screen" class="overlay screen hidden">
+        <h2 class="screen-title">STAGE SELECT</h2>
+        <div id="stage-grid" class="stage-grid"></div>
+        <button id="btn-back" class="menu-btn small">タイトルへ戻る</button>
+      </div>
+
+      <!-- ステージクリア画面 -->
+      <div id="clear-screen" class="overlay screen hidden">
+        <h2 class="screen-title clear-title">STAGE CLEAR!</h2>
+        <div class="menu">
+          <button id="btn-next" class="menu-btn">次のステージへ</button>
+          <button id="btn-clear-select" class="menu-btn small">ステージ選択</button>
+        </div>
+      </div>
+
+      <!-- 全ステージクリア画面 -->
+      <div id="allclear-screen" class="overlay screen hidden">
+        <h2 class="screen-title clear-title">ALL CLEAR!!</h2>
+        <p class="subtitle">おめでとう!全10ステージ制覇!</p>
+        <div class="menu">
+          <button id="btn-allclear-title" class="menu-btn">タイトルへ</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- モバイル用タッチ操作 UI -->
+    <div id="touch-ui" aria-hidden="true">
+      <div class="tc-left">
+        <div class="tc-btn" id="tc-left" data-key="left">◀</div>
+        <div class="tc-btn" id="tc-right" data-key="right">▶</div>
+      </div>
+      <div class="tc-right">
+        <div class="tc-btn tc-round" id="tc-dash" data-key="dash">B</div>
+        <div class="tc-btn tc-round tc-jump" id="tc-jump" data-key="jump">A</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 縦向き時のオーバーレイ -->
+  <div id="rotate-overlay">
+    <div class="rotate-inner">
+      <div class="rotate-icon">📱↻</div>
+      <p>端末を横向きにしてください</p>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
