@@ -767,6 +767,7 @@ window.addEventListener('orientationchange', fitStage);
 window.__game = {
   player,
   state: () => ({ mode, stageNum, coins, camX }),
+  level: () => level,
 };
 
 // ?stage=N で直接ステージ開始
