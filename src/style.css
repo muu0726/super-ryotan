@@ -178,6 +178,16 @@ canvas#game {
   letter-spacing: 0.05em;
 }
 
+/* ---- バージョン表記 (タイトル画面右下) ---- */
+#version-label {
+  position: absolute;
+  right: max(14px, 1.8%);
+  bottom: max(10px, 1.6%);
+  color: var(--text-dim);
+  font-size: clamp(9px, 1.6cqw, 12px);
+  letter-spacing: 0.08em;
+}
+
 /* ---- プレイ中の中断ボタン ---- */
 #btn-pause {
   position: absolute;
