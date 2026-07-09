@@ -178,6 +178,22 @@ canvas#game {
   letter-spacing: 0.05em;
 }
 
+/* ---- タイトル画面の累計コイン表示 ---- */
+.total-coins {
+  color: var(--accent);
+  font-size: clamp(12px, 2.4cqw, 17px);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  background: rgba(255, 210, 63, 0.08);
+  border: 1px solid rgba(255, 210, 63, 0.35);
+  border-radius: 999px;
+  padding: 0.35em 1.4em;
+}
+
+.total-coins #total-coins-value {
+  color: var(--text);
+}
+
 /* ---- バージョン表記 (タイトル画面右下) ---- */
 #version-label {
   position: absolute;
@@ -221,9 +237,9 @@ canvas#game {
 /* ---- ステージ選択グリッド ---- */
 .stage-grid {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 12px;
-  width: min(70%, 480px);
+  grid-template-columns: repeat(7, 1fr);
+  gap: 10px;
+  width: min(80%, 560px);
 }
 
 .stage-cell {
@@ -272,6 +288,11 @@ canvas#game {
   inset: 0;
   pointer-events: none;
   z-index: 50;
+}
+
+/* メニュー画面ではJS側から hidden が付与される (タッチ環境でも非表示) */
+#touch-ui.hidden {
+  display: none !important;
 }
 
 @media (pointer: coarse) {

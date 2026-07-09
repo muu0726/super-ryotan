@@ -6,7 +6,7 @@ import './style.css';
 import { initPWA } from './pwa.js';
 import { initInput, input } from './input.js';
 import { TILE, G_FALL, updatePhysics, V_WALK_MAX } from './physics.js';
-import { Level, LEVEL_COUNT, LEVEL_NAMES, loadProgress, saveProgress, loadBestTime, saveBestTime } from './level.js';
+import { Level, LEVEL_COUNT, LEVEL_NAMES, stageLabel, loadProgress, saveProgress, loadBestTime, saveBestTime, loadTotalCoins, saveTotalCoins } from './level.js';
 import {
   unlockAudio, sfxJump, sfxCoin, sfxBump, sfxBlock,
   sfxDeath, sfxClear, sfxSelect, sfxKick, sfxBreak,
@@ -368,6 +368,8 @@ function updateStep() {
         player.vy = -3.8;
         player.onGround = false;
         coins += clearBonus;
+        // クリア確定: 今回の獲得コイン (ボーナス込み) を累計に加算して保存
+        saveTotalCoins(loadTotalCoins() + coins);
         particles.push({
           x: player.x + player.w / 2 + 14, y: player.y - 8,
           vy: -0.5, t: 0, life: 70, kind: 'text', text: `コイン +${clearBonus}`,
@@ -686,7 +688,7 @@ function drawHUD() {
   ctx.fillStyle = 'rgba(0,0,0,0.35)';
   ctx.fillRect(10, 10, 335, 30);
   ctx.fillStyle = '#eef1ff';
-  ctx.fillText(`STAGE ${stageNum}`, 20, 17);
+  ctx.fillText(`STAGE ${stageLabel(stageNum)}`, 20, 17);
   // コイン
   ctx.fillStyle = '#ffd23f';
   ctx.beginPath();
@@ -710,7 +712,7 @@ function drawHUD() {
     ctx.textAlign = 'center';
     ctx.font = 'bold 26px "Segoe UI", sans-serif';
     ctx.fillStyle = '#ffd23f';
-    ctx.fillText(`STAGE ${stageNum}`, VIEW_W / 2, 140);
+    ctx.fillText(`STAGE ${stageLabel(stageNum)}`, VIEW_W / 2, 140);
     ctx.font = 'bold 18px "Segoe UI", sans-serif';
     ctx.fillStyle = '#eef1ff';
     ctx.fillText(LEVEL_NAMES[stageNum - 1], VIEW_W / 2, 176);
@@ -989,8 +991,9 @@ function gameLoop(timestamp) {
     ctx.fillRect(0, 0, VIEW_W, VIEW_H);
   }
 
-  // 中断ボタンはプレイ操作中のみ表示
+  // 中断ボタンとタッチ操作UIはプレイ操作中のみ表示
   pauseBtn.classList.toggle('hidden', mode !== 'play' || paused);
+  touchUi.classList.toggle('hidden', mode !== 'play' || paused);
 
   requestAnimationFrame(gameLoop);
 }
@@ -1000,6 +1003,7 @@ function gameLoop(timestamp) {
 // ============================================
 const screens = ['title-screen', 'select-screen', 'clear-screen', 'allclear-screen', 'pause-screen'];
 const pauseBtn = document.getElementById('btn-pause');
+const touchUi = document.getElementById('touch-ui');
 
 function pauseGame() {
   if (mode !== 'play' || paused) return;
@@ -1021,6 +1025,9 @@ function quitStage(screenId) {
 }
 
 function showScreen(id) {
+  if (id === 'title-screen') {
+    document.getElementById('total-coins-value').textContent = loadTotalCoins();
+  }
   for (const s of screens) {
     document.getElementById(s).classList.toggle('hidden', s !== id);
   }
@@ -1040,7 +1047,7 @@ function buildStageGrid() {
     if (i <= unlocked) {
       const best = loadBestTime(i);
       const timeStr = best !== null ? `⏱${best.toFixed(1)}s` : '';
-      btn.innerHTML = `<span class="num">${i}</span><span class="best-time">${timeStr}</span>`;
+      btn.innerHTML = `<span class="num">${stageLabel(i)}</span><span class="best-time">${timeStr}</span>`;
     } else {
       btn.innerHTML = '🔒';
     }
