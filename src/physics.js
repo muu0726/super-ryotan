@@ -16,6 +16,7 @@ export const G_RISE = 0.28;      // 上昇時重力 2α/t²
 export const G_FALL = 0.56;      // 落下時重力 (上昇の2倍)
 export const JUMP_V = -6.7;      // 初速 -√(2αγ)
 export const JUMP_V_DASH = -7.5; // 走行時の強化ジャンプ初速 (SMB準拠: 速度でジャンプ力が伸びる)
+export const STOMP_BOUNCE_V = -7.5; // 踏みつけ跳ね返り初速 (SMB準拠: 長押しで通常ジャンプ相当 ≈100px、はてなブロックの上に乗れる高さ)
 export const DASH_JUMP_SPEED = 3.5; // この水平速度以上で強化ジャンプが発動
 export const MAX_RISE_FRAMES = 24;
 export const TERMINAL_V = 8.0;   // 終端速度 (床すり抜け防止)
@@ -390,7 +391,7 @@ export function updatePhysics(player, input, level) {
           e.deadTimer = 30; // 30フレーム表示
           e.vx = 0;
         }
-        player.vy = -5.0; // 踏みつけ跳ね返り
+        player.vy = STOMP_BOUNCE_V; // 踏みつけ跳ね返り (長押しで高く跳べる)
         player.jumping = true;
         player.riseFrames = 0;
         player.jumpCut = false;

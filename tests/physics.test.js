@@ -9,7 +9,8 @@ import {
   G_RISE,
   G_FALL,
   SHELL_SPEED,
-  ITEM_SPEED
+  ITEM_SPEED,
+  STOMP_BOUNCE_V
 } from '../src/physics.js';
 
 describe('physics.js - マリオ物理演算の検証', () => {
@@ -156,7 +157,7 @@ describe('physics.js - マリオ物理演算の検証', () => {
       const events = updatePhysics(player, input, level);
       
       expect(enemy.dead).toBe(true);
-      expect(player.vy).toBe(-5.0); // 踏みつけ後の跳ね返り
+      expect(player.vy).toBe(STOMP_BOUNCE_V); // 踏みつけ後の跳ね返り
       expect(events.stomped).toBe(true);
       expect(events.spike).toBe(false);
     });
@@ -311,7 +312,7 @@ describe('physics.js - マリオ物理演算の検証', () => {
       expect(koopa.state).toBe('shell');
       expect(koopa.vx).toBe(0);
       expect(events.stomped).toBe(true);
-      expect(player.vy).toBe(-5.0); // 跳ね返り
+      expect(player.vy).toBe(STOMP_BOUNCE_V); // 跳ね返り
     });
 
     it('静止甲羅に横から触れると蹴り出され、滑走すること (ダメージなし)', () => {
