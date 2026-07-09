@@ -13,6 +13,21 @@
     <div id="stage-wrap">
       <canvas id="game" width="800" height="450"></canvas>
 
+      <!-- プレイ中の中断ボタン -->
+      <button id="btn-pause" class="hidden" aria-label="中断">⏸</button>
+
+      <!-- ポーズ (中断) 画面 -->
+      <div id="pause-screen" class="overlay screen hidden">
+        <h2 class="screen-title">PAUSE</h2>
+        <div class="menu">
+          <button id="btn-resume" class="menu-btn">つづける</button>
+          <button id="btn-retry" class="menu-btn small">さいしょから</button>
+          <button id="btn-pause-select" class="menu-btn small">ステージ選択</button>
+          <button id="btn-pause-title" class="menu-btn small">タイトルへ</button>
+        </div>
+        <p class="hint">ESC / P: 再開</p>
+      </div>
+
       <!-- タイトル画面 -->
       <div id="title-screen" class="overlay screen">
         <h1 class="game-title"><span>SUPER</span> RYO-TAN</h1>
@@ -21,7 +36,7 @@
           <button id="btn-start" class="menu-btn">最初から</button>
           <button id="btn-select" class="menu-btn">ステージ選択</button>
         </div>
-        <p class="hint">←→/AD: 移動&nbsp;&nbsp;Z/SPACE: ジャンプ&nbsp;&nbsp;X/SHIFT: ダッシュ</p>
+        <p class="hint">←→/AD: 移動&nbsp;&nbsp;Z/SPACE: ジャンプ&nbsp;&nbsp;X/SHIFT: ダッシュ&nbsp;&nbsp;ESC: 中断</p>
       </div>
 
       <!-- ステージ選択画面 -->

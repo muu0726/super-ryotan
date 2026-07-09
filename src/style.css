@@ -178,6 +178,36 @@ canvas#game {
   letter-spacing: 0.05em;
 }
 
+/* ---- プレイ中の中断ボタン ---- */
+#btn-pause {
+  position: absolute;
+  top: 1.6%;
+  right: 1%;
+  z-index: 5; /* オーバーレイ画面 (z-index:10) より下 */
+  width: clamp(34px, 6cqw, 48px);
+  height: clamp(34px, 6cqw, 48px);
+  font: inherit;
+  font-size: clamp(16px, 3cqw, 22px);
+  line-height: 1;
+  color: var(--text);
+  background: rgba(11, 14, 26, 0.55);
+  border: 2px solid var(--text-dim);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+#btn-pause:hover,
+#btn-pause:focus-visible {
+  background: rgba(255, 210, 63, 0.14);
+  border-color: var(--accent);
+  outline: none;
+}
+
+#btn-pause.hidden {
+  display: none;
+}
+
 /* ---- ステージ選択グリッド ---- */
 .stage-grid {
   display: grid;

@@ -60,6 +60,7 @@ const player = {
 
 // ---- ゲーム状態 ----
 let mode = 'menu'; // menu | play | dying | clear
+let paused = false; // 中断中 (物理更新とタイム計測を凍結)
 let level = null;
 let stageNum = 1;
 let coins = 0;
@@ -84,6 +85,7 @@ let particles = []; // コインポップ演出
 // ============================================
 function loadStage(n) {
   stageNum = n;
+  paused = false;
   level = new Level(n - 1);
   coins = 0;
   camX = 0;
@@ -959,7 +961,7 @@ function gameLoop(timestamp) {
     prevY = player.y;
     prevCam = camX;
 
-    if (level) updateStep();
+    if (level && !paused) updateStep();
 
     currentX = player.x;
     currentY = player.y;
@@ -986,13 +988,36 @@ function gameLoop(timestamp) {
     ctx.fillRect(0, 0, VIEW_W, VIEW_H);
   }
 
+  // 中断ボタンはプレイ操作中のみ表示
+  pauseBtn.classList.toggle('hidden', mode !== 'play' || paused);
+
   requestAnimationFrame(gameLoop);
 }
 
 // ============================================
-// UI (タイトル / ステージ選択 / クリア)
+// UI (タイトル / ステージ選択 / クリア / ポーズ)
 // ============================================
-const screens = ['title-screen', 'select-screen', 'clear-screen', 'allclear-screen'];
+const screens = ['title-screen', 'select-screen', 'clear-screen', 'allclear-screen', 'pause-screen'];
+const pauseBtn = document.getElementById('btn-pause');
+
+function pauseGame() {
+  if (mode !== 'play' || paused) return;
+  paused = true;
+  showScreen('pause-screen');
+}
+
+function resumeGame() {
+  if (!paused) return;
+  paused = false;
+  hideScreens();
+}
+
+// 中断メニューからステージを離脱する (選択画面・タイトルへ)
+function quitStage(screenId) {
+  paused = false;
+  mode = 'menu';
+  showScreen(screenId);
+}
 
 function showScreen(id) {
   for (const s of screens) {
@@ -1047,6 +1072,20 @@ function wireUI() {
   on('btn-clear-select', () => { buildStageGrid(); showScreen('select-screen'); });
   on('btn-allclear-title', () => showScreen('title-screen'));
 
+  // 中断ボタンとポーズメニュー
+  on('btn-pause', pauseGame);
+  on('btn-resume', resumeGame);
+  on('btn-retry', () => { hideScreens(); loadStage(stageNum); });
+  on('btn-pause-select', () => { buildStageGrid(); quitStage('select-screen'); });
+  on('btn-pause-title', () => quitStage('title-screen'));
+
+  // ESC / P でポーズをトグル
+  window.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' && e.key.toLowerCase() !== 'p') return;
+    if (paused) resumeGame();
+    else if (mode === 'play') { sfxSelect(); pauseGame(); }
+  });
+
   // 初回のあらゆる操作で AudioContext を解錠
   window.addEventListener('keydown', unlockAudio, { once: false });
   window.addEventListener('touchstart', unlockAudio, { once: false });
@@ -1074,7 +1113,7 @@ window.addEventListener('orientationchange', fitStage);
 // E2Eテスト・デバッグ用の状態フック
 window.__game = {
   player,
-  state: () => ({ mode, stageNum, coins, camX }),
+  state: () => ({ mode, stageNum, coins, camX, paused }),
   level: () => level,
 };
 
