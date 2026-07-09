@@ -83,6 +83,7 @@ function buttonRects() {
   const rects = [];
   for (const el of document.querySelectorAll('.tc-btn')) {
     const r = el.getBoundingClientRect();
+    if (r.width === 0 || r.height === 0) continue; // タッチUI非表示 (デスクトップ等)
     const exW = (r.width * (HIT_SCALE - 1)) / 2;
     const exH = (r.height * (HIT_SCALE - 1)) / 2;
     rects.push({
@@ -131,22 +132,31 @@ function initTouch() {
 
   const opts = { passive: false };
 
-  ui.addEventListener('touchstart', (e) => {
-    e.preventDefault(); // ダブルタップズーム・長押しメニュー抑止
+  // リスナーは #touch-ui ではなく window に置く。
+  // #touch-ui は pointer-events: none のため、ボタン矩形の外周に広げた
+  // 拡張ヒットエリア (HIT_SCALE) へのタッチはコンテナに届かず取りこぼされる
+  // (実機でダッシュのトグルタップが無反応になる原因)。
+  // window で受けてヒット判定し、ボタンに関わるタッチのみ preventDefault する
+  // (無関係なタッチまで止めるとメニューボタンの click 合成が阻害されるため)。
+  window.addEventListener('touchstart', (e) => {
+    let consumed = false;
     for (const t of e.changedTouches) {
       const hit = hitTest(t.clientX, t.clientY);
       if (hit) {
+        consumed = true;
         touchOwner.set(t.identifier, { action: hit.action, el: hit.el });
         press(hit.action, hit.el);
       }
     }
+    if (consumed) e.preventDefault(); // ダブルタップズーム・長押しメニュー抑止
   }, opts);
 
-  ui.addEventListener('touchmove', (e) => {
-    e.preventDefault(); // バウンススクロール抑止
+  window.addEventListener('touchmove', (e) => {
+    let consumed = false;
     for (const t of e.changedTouches) {
       const owned = touchOwner.get(t.identifier);
       const hit = hitTest(t.clientX, t.clientY);
+      if (owned) consumed = true;
       if (owned && (!hit || hit.action !== owned.action)) {
         // 指がボタン外へスライドした → 離した扱い、別ボタンなら押し替え。
         // ダッシュ(トグル)への誤爆を防ぐため、スライド流入では発火しない
@@ -156,18 +166,24 @@ function initTouch() {
           press(hit.action, hit.el);
         }
       } else if (!owned && hit && hit.action !== 'dash') {
+        consumed = true;
         touchOwner.set(t.identifier, { action: hit.action, el: hit.el });
         press(hit.action, hit.el);
       }
     }
+    if (consumed) e.preventDefault(); // バウンススクロール抑止
   }, opts);
 
   const end = (e) => {
-    e.preventDefault();
-    for (const t of e.changedTouches) release(t.identifier);
+    let consumed = false;
+    for (const t of e.changedTouches) {
+      if (touchOwner.has(t.identifier)) consumed = true;
+      release(t.identifier);
+    }
+    if (consumed) e.preventDefault();
   };
-  ui.addEventListener('touchend', end, opts);
-  ui.addEventListener('touchcancel', end, opts);
+  window.addEventListener('touchend', end, opts);
+  window.addEventListener('touchcancel', end, opts);
 
   // ゲーム画面自体のタッチでもズーム等を抑止
   const canvas = document.getElementById('game');
