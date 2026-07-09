@@ -10,7 +10,8 @@ import {
   G_FALL,
   SHELL_SPEED,
   ITEM_SPEED,
-  STOMP_BOUNCE_V
+  STOMP_BOUNCE_V,
+  STOMP_JUMP_V
 } from '../src/physics.js';
 
 describe('physics.js - マリオ物理演算の検証', () => {
@@ -160,6 +161,69 @@ describe('physics.js - マリオ物理演算の検証', () => {
       expect(player.vy).toBe(STOMP_BOUNCE_V); // 踏みつけ後の跳ね返り
       expect(events.stomped).toBe(true);
       expect(events.spike).toBe(false);
+    });
+
+    it('踏む瞬間にジャンプを押していると大ジャンプ (STOMP_JUMP_V) になること', () => {
+      const enemy = {
+        x: 32, y: 72, w: 24, h: 24,
+        vx: -0.7, vy: 0,
+        dead: false, deadTimer: 0, animTime: 0,
+      };
+      level.enemies = [enemy];
+
+      player.onGround = false;
+      player.vy = 2.0;
+      player.y = 72 - 44 + 1;
+      input.jump = true; // このフレームで押した (jumpHeldPrev = false)
+
+      const events = updatePhysics(player, input, level);
+
+      expect(events.stomped).toBe(true);
+      expect(player.vy).toBe(STOMP_JUMP_V);
+      expect(player.jumping).toBe(true);
+    });
+
+    it('踏んだ直後の猶予フレーム内のジャンプ押下も大ジャンプに変換されること', () => {
+      const enemy = {
+        x: 32, y: 72, w: 24, h: 24,
+        vx: -0.7, vy: 0,
+        dead: false, deadTimer: 0, animTime: 0,
+      };
+      level.enemies = [enemy];
+
+      // フレーム1: ボタンなしで踏む → 小バウンド
+      player.onGround = false;
+      player.vy = 2.0;
+      player.y = 72 - 44 + 1;
+      const ev1 = updatePhysics(player, input, level);
+      expect(ev1.stomped).toBe(true);
+      expect(player.vy).toBe(STOMP_BOUNCE_V);
+
+      // フレーム2: 猶予内にジャンプ押下 → 大ジャンプに変換 (重力1フレーム分が乗る)
+      input.jump = true;
+      updatePhysics(player, input, level);
+      expect(player.vy).toBe(STOMP_JUMP_V + G_RISE);
+      expect(player.jumping).toBe(true);
+    });
+
+    it('ボタンを押しっぱなし (長押し) のまま踏んでも大ジャンプにはならないこと', () => {
+      const enemy = {
+        x: 32, y: 72, w: 24, h: 24,
+        vx: -0.7, vy: 0,
+        dead: false, deadTimer: 0, animTime: 0,
+      };
+      level.enemies = [enemy];
+
+      player.onGround = false;
+      player.vy = 2.0;
+      player.y = 72 - 44 + 1;
+      input.jump = true;
+      player.jumpHeldPrev = true; // 前フレームから押しっぱなし
+
+      const events = updatePhysics(player, input, level);
+
+      expect(events.stomped).toBe(true);
+      expect(player.vy).toBe(STOMP_BOUNCE_V); // 小バウンドのまま
     });
 
     it('横方向から敵にぶつかった場合、ミス（死亡フラグ）になること', () => {

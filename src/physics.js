@@ -16,7 +16,9 @@ export const G_RISE = 0.28;      // 上昇時重力 2α/t²
 export const G_FALL = 0.56;      // 落下時重力 (上昇の2倍)
 export const JUMP_V = -6.7;      // 初速 -√(2αγ)
 export const JUMP_V_DASH = -7.5; // 走行時の強化ジャンプ初速 (SMB準拠: 速度でジャンプ力が伸びる)
-export const STOMP_BOUNCE_V = -7.5; // 踏みつけ跳ね返り初速 (SMB準拠: 長押しで通常ジャンプ相当 ≈100px、はてなブロックの上に乗れる高さ)
+export const STOMP_BOUNCE_V = -4.5; // 踏みつけの小バウンド初速 (ジャンプ入力なしの場合)
+export const STOMP_JUMP_V = -7.5;   // 踏む瞬間のタイミング押しで出る大ジャンプ初速 (SMB準拠: 通常ジャンプ相当 ≈100px)
+export const STOMP_JUMP_GRACE_FRAMES = 6; // 踏んだ後もジャンプ押下を大ジャンプとして受け付ける猶予フレーム
 export const DASH_JUMP_SPEED = 3.5; // この水平速度以上で強化ジャンプが発動
 export const MAX_RISE_FRAMES = 24;
 export const TERMINAL_V = 8.0;   // 終端速度 (床すり抜け防止)
@@ -145,8 +147,10 @@ export function updatePhysics(player, input, level) {
   // コヨーテタイム: 崖を離れた直後もしばらくジャンプ可能
   if (player.onGround) {
     player.coyoteFrames = COYOTE_FRAMES;
+    player.stompGraceFrames = 0;
   } else {
     player.coyoteFrames = Math.max(0, (player.coyoteFrames || 0) - 1);
+    player.stompGraceFrames = Math.max(0, (player.stompGraceFrames || 0) - 1);
   }
   // 先行入力: 押した瞬間から一定フレーム、着地時のジャンプとして受け付ける
   if (input.jump && !player.jumpHeldPrev) {
@@ -156,15 +160,21 @@ export function updatePhysics(player, input, level) {
   }
 
   if (player.jumpBufferFrames > 0 && !player.jumping &&
-      (player.onGround || player.coyoteFrames > 0)) {
-    // 走行速度に応じてジャンプ初速を強化 (SMB準拠)
-    player.vy = Math.abs(player.vx) >= DASH_JUMP_SPEED ? JUMP_V_DASH : JUMP_V;
+      (player.onGround || player.coyoteFrames > 0 || player.stompGraceFrames > 0)) {
+    if (!player.onGround && player.coyoteFrames <= 0) {
+      // 踏みつけ直後のタイミング押し → 大ジャンプに変換
+      player.vy = STOMP_JUMP_V;
+    } else {
+      // 走行速度に応じてジャンプ初速を強化 (SMB準拠)
+      player.vy = Math.abs(player.vx) >= DASH_JUMP_SPEED ? JUMP_V_DASH : JUMP_V;
+    }
     player.onGround = false;
     player.jumping = true;
     player.riseFrames = 0;
     player.jumpCut = false;
     player.coyoteFrames = 0;
     player.jumpBufferFrames = 0;
+    player.stompGraceFrames = 0;
     events.jumped = true;
   } else if (!input.jump && player.jumping && !player.jumpCut && player.vy < 0) {
     // ボタン早期リリース → 上昇速度を50%に減衰し惰性上昇へ
@@ -391,10 +401,21 @@ export function updatePhysics(player, input, level) {
           e.deadTimer = 30; // 30フレーム表示
           e.vx = 0;
         }
-        player.vy = STOMP_BOUNCE_V; // 踏みつけ跳ね返り (長押しで高く跳べる)
-        player.jumping = true;
-        player.riseFrames = 0;
-        player.jumpCut = false;
+        // 跳ね返り: 踏む直前にジャンプを押していれば大ジャンプ、
+        // そうでなければ小バウンド (直後の押下も猶予フレーム内なら大ジャンプに変換)
+        if (player.jumpBufferFrames > 0) {
+          player.vy = STOMP_JUMP_V;
+          player.jumping = true;
+          player.riseFrames = 0;
+          player.jumpCut = false;
+          player.jumpBufferFrames = 0;
+          player.stompGraceFrames = 0;
+        } else {
+          player.vy = STOMP_BOUNCE_V;
+          player.jumping = false;
+          player.stompGraceFrames = STOMP_JUMP_GRACE_FRAMES;
+        }
+        player.onGround = false;
         events.stomped = true;
       } else if (type === 'koopa' && e.state === 'shell') {
         // 静止甲羅に横から触れると蹴り出す (ダメージなし)
