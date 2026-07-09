@@ -5,6 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <meta name="theme-color" content="#0b0e1a" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🍄</text></svg>" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="RYO-TAN" />
   <title>SUPER RYO-TAN</title>
 </head>
 <body>
@@ -30,14 +36,14 @@
 
       <!-- タイトル画面 -->
       <div id="title-screen" class="overlay screen">
-        <h1 class="game-title"><span>SUPER</span> RYO-TAN</h1>
+        <h1 class="game-title"><span>すーぱー</span>りょうたん</h1>
         <p class="subtitle">2D ACTION</p>
         <div class="menu">
           <button id="btn-start" class="menu-btn">最初から</button>
           <button id="btn-select" class="menu-btn">ステージ選択</button>
         </div>
         <p class="hint">←→/AD: 移動&nbsp;&nbsp;Z/SPACE: ジャンプ&nbsp;&nbsp;X/SHIFT: ダッシュ&nbsp;&nbsp;ESC: 中断</p>
-        <p id="version-label">ver 1.0</p>
+        <p id="version-label">ver 1.1</p>
       </div>
 
       <!-- ステージ選択画面 -->
@@ -76,6 +82,25 @@
         <div class="tc-btn tc-round" id="tc-dash" data-key="dash">B</div>
         <div class="tc-btn tc-round tc-jump" id="tc-jump" data-key="jump">A</div>
       </div>
+    </div>
+  </div>
+
+  <!-- PWA インストール要求オーバーレイ (モバイルのブラウザ起動時) -->
+  <div id="install-gate" class="hidden">
+    <div class="gate-inner">
+      <img class="gate-icon" src="icons/icon-192.png" alt="SUPER RYO-TAN" width="96" height="96" />
+      <h2>SUPER RYO-TAN</h2>
+      <p class="gate-lead">このゲームはホーム画面に追加して<br />アプリとして起動すると遊べます</p>
+      <button id="btn-install" class="menu-btn hidden">📲 ホーム画面に追加</button>
+      <p id="install-steps-ios" class="gate-steps hidden">
+        Safari の共有ボタン（<span class="gate-kbd">□↑</span>）をタップ →<br />
+        「<b>ホーム画面に追加</b>」を選んでください
+      </p>
+      <p id="install-steps-android" class="gate-steps hidden">
+        ブラウザのメニュー（<span class="gate-kbd">⋮</span>）から<br />
+        「<b>アプリをインストール</b>」または「<b>ホーム画面に追加</b>」を選んでください
+      </p>
+      <p class="gate-note">追加したら、ホーム画面のアイコンから起動してね</p>
     </div>
   </div>
 

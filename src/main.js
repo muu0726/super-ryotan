@@ -3,6 +3,7 @@
 // ============================================
 
 import './style.css';
+import { initPWA } from './pwa.js';
 import { initInput, input } from './input.js';
 import { TILE, G_FALL, updatePhysics, V_WALK_MAX } from './physics.js';
 import { Level, LEVEL_COUNT, LEVEL_NAMES, loadProgress, saveProgress, loadBestTime, saveBestTime } from './level.js';
@@ -1104,6 +1105,7 @@ function fitStage() {
 // ============================================
 // 起動
 // ============================================
+initPWA();
 initInput();
 wireUI();
 fitStage();
