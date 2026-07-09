@@ -101,6 +101,34 @@ export function sfxClear() {
   });
 }
 
+// ---- パワーアップ音: 上昇アルペジオ (SMB1のきのこ音風) ----
+export function sfxPowerup() {
+  const notes = [262, 330, 392, 523, 659, 784, 1047];
+  notes.forEach((f, i) => {
+    tone({ type: 'square', from: f, to: f, dur: 0.07, delay: i * 0.045, vol: 0.4 });
+  });
+}
+
+// ---- 縮小音: 下降ステップ (SMB1のダメージ縮小音風) ----
+export function sfxShrink() {
+  const notes = [784, 587, 440, 330, 247];
+  notes.forEach((f, i) => {
+    tone({ type: 'square', from: f, to: f * 0.85, dur: 0.09, delay: i * 0.07, vol: 0.4 });
+  });
+}
+
+// ---- ゴールポール滑降音: 下降スライドホイッスル (SMB1の旗降下音風) ----
+export function sfxFlag() {
+  tone({ type: 'square', from: 1568, to: 196, dur: 0.9, vol: 0.35 });
+  tone({ type: 'triangle', from: 784, to: 98, dur: 0.9, vol: 0.3 });
+}
+
+// ---- 花火: 破裂ノイズ + 低音の余韻 ----
+export function sfxFirework() {
+  noise({ dur: 0.35, vol: 0.5, low: 900 });
+  tone({ type: 'triangle', from: 500, to: 60, dur: 0.3, vol: 0.4 });
+}
+
 // ---- 決定音 (UI) ----
 export function sfxSelect() {
   tone({ type: 'square', from: 660, to: 990, dur: 0.08, vol: 0.4 });

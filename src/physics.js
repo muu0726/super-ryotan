@@ -24,11 +24,16 @@ export const TERMINAL_V = 8.0;   // 終端速度 (床すり抜け防止)
 export const COYOTE_FRAMES = 5;      // 崖を離れた後もジャンプを受け付ける猶予フレーム
 export const JUMP_BUFFER_FRAMES = 6; // 着地前のジャンプ入力の先行受付フレーム
 
+// ---- 敵・アイテム ----
+export const SHELL_SPEED = 4.5;          // 蹴られた甲羅の滑走速度
+export const SHELL_REVIVE_FRAMES = 300;  // 甲羅から歩行に復帰するまでのフレーム (SMB準拠)
+export const ITEM_SPEED = 1.4;           // きのこの自走速度
+
 // ---- 当たり判定 ----
 const INSET = 0.2;               // 継ぎ目スタック対策のコライダー縮小量
 
 function isSolid(ch) {
-  return ch === '#' || ch === 'B' || ch === '?' || ch === 'U';
+  return ch === '#' || ch === 'B' || ch === '?' || ch === 'U' || ch === 'M';
 }
 
 // '=' は一方通行のすり抜け床: 上からのみ着地でき、下・横からは通り抜ける
@@ -102,6 +107,9 @@ function collidesSolid(level, x, y, w, h) {
  */
 export function updatePhysics(player, input, level) {
   const events = { bumped: [], coins: [], spike: false, goal: false, fellOff: false };
+
+  // 被弾後の無敵時間 (点滅中は敵・トゲのダメージを受けない)
+  if (player.invincible > 0) player.invincible--;
 
   // ---------- 水平方向 ----------
   const vmax = input.dash ? V_DASH_MAX : V_WALK_MAX;
@@ -218,6 +226,11 @@ export function updatePhysics(player, input, level) {
             level.setTile(tx, hit.ty, 'U');
             events.bumped.push({ tx, ty: hit.ty, kind: 'item' });
             break;
+          } else if (tile === 'M') {
+            // きのこ入りハテナブロック
+            level.setTile(tx, hit.ty, 'U');
+            events.bumped.push({ tx, ty: hit.ty, kind: 'mushroom' });
+            break;
           } else if (tile === 'B') {
             events.bumped.push({ tx, ty: hit.ty, kind: 'bump' });
             break;
@@ -254,54 +267,86 @@ export function updatePhysics(player, input, level) {
     }
 
     e.animTime++;
+    const type = e.type || 'walker';
 
-    // 敵の重力適用
-    e.vy += G_FALL;
-    if (e.vy > TERMINAL_V) e.vy = TERMINAL_V;
-
-    // X軸移動と衝突判定
-    e.x += e.vx;
-    let hitX = collidesSolid(level, e.x, e.y, e.w, e.h);
-    if (hitX) {
-      if (e.vx > 0) {
-        e.x = hitX.tx * TILE - e.w - INSET;
-      } else {
-        e.x = (hitX.tx + 1) * TILE + INSET;
-      }
-      e.vx *= -1; // 反転
-    }
-
-    // Y軸移動と衝突判定 (すり抜け床にも上からは着地する)
-    e.y += e.vy;
-    let hitY = collidesSolid(level, e.x, e.y, e.w, e.h);
-    if (hitY) {
-      if (e.vy > 0) {
-        e.y = hitY.ty * TILE - e.h - INSET;
-        e.vy = 0;
-        e.onGround = true;
-      } else {
-        e.y = (hitY.ty + 1) * TILE + INSET;
-        e.vy = 0;
-      }
+    if (type === 'flyer') {
+      // パタパタ風: 基準点を中心に上下へふわふわ浮遊 (重力・地形の影響なし)
+      e.y = e.baseY + Math.sin(e.animTime * 0.04) * 28;
     } else {
-      const ow = e.vy > 0 ? oneWayLanding(level, e) : null;
-      if (ow) {
-        e.y = ow.ty * TILE - e.h - INSET;
-        e.vy = 0;
-        e.onGround = true;
-      } else {
-        e.onGround = false;
+      // 甲羅状態のノコノコは一定時間で歩行に復帰する (SMB準拠)
+      if (type === 'koopa' && e.state === 'shell') {
+        e.shellTimer++;
+        if (e.shellTimer > SHELL_REVIVE_FRAMES) {
+          e.state = 'walk';
+          e.y -= 10;
+          e.h = 30;
+          e.vx = -0.6;
+        }
       }
-    }
 
-    // 崖の手前で反転するAI (穴に落ちないようにする)
-    if (e.onGround) {
-      const checkY = e.y + e.h + 2; // 足元少し下
-      const edgeX = e.vx > 0 ? (e.x + e.w + 4) : (e.x - 4);
-      const tileBelow = collidesSolid(level, edgeX, checkY, 2, 2) ||
-        isOneWay(level.tileAt(Math.floor(edgeX / TILE), Math.floor(checkY / TILE)));
-      if (!tileBelow) {
-        e.vx *= -1; // 崖っぷちで反転
+      // 敵の重力適用
+      e.vy += G_FALL;
+      if (e.vy > TERMINAL_V) e.vy = TERMINAL_V;
+
+      // X軸移動と衝突判定
+      e.x += e.vx;
+      let hitX = collidesSolid(level, e.x, e.y, e.w, e.h);
+      if (hitX) {
+        if (e.vx > 0) {
+          e.x = hitX.tx * TILE - e.w - INSET;
+        } else {
+          e.x = (hitX.tx + 1) * TILE + INSET;
+        }
+        e.vx *= -1; // 反転
+      }
+
+      // Y軸移動と衝突判定 (すり抜け床にも上からは着地する)
+      e.y += e.vy;
+      let hitY = collidesSolid(level, e.x, e.y, e.w, e.h);
+      if (hitY) {
+        if (e.vy > 0) {
+          e.y = hitY.ty * TILE - e.h - INSET;
+          e.vy = 0;
+          e.onGround = true;
+        } else {
+          e.y = (hitY.ty + 1) * TILE + INSET;
+          e.vy = 0;
+        }
+      } else {
+        const ow = e.vy > 0 ? oneWayLanding(level, e) : null;
+        if (ow) {
+          e.y = ow.ty * TILE - e.h - INSET;
+          e.vy = 0;
+          e.onGround = true;
+        } else {
+          e.onGround = false;
+        }
+      }
+
+      // 崖の手前で反転するAI (クリボー風のみ。ノコノコ・甲羅はSMB準拠で崖から落ちる)
+      if (type === 'walker' && e.onGround) {
+        const checkY = e.y + e.h + 2; // 足元少し下
+        const edgeX = e.vx > 0 ? (e.x + e.w + 4) : (e.x - 4);
+        const tileBelow = collidesSolid(level, edgeX, checkY, 2, 2) ||
+          isOneWay(level.tileAt(Math.floor(edgeX / TILE), Math.floor(checkY / TILE)));
+        if (!tileBelow) {
+          e.vx *= -1; // 崖っぷちで反転
+        }
+      }
+
+      // 滑走中の甲羅は他の敵を連鎖撃破する
+      if (type === 'koopa' && e.state === 'slide') {
+        for (const other of level.enemies) {
+          if (other === e || other.dead) continue;
+          if (other.x + other.w > e.x && other.x < e.x + e.w &&
+              other.y + other.h > e.y && other.y < e.y + e.h) {
+            other.dead = true;
+            other.deadTimer = 30;
+            other.vx = 0;
+            events.shellKills = events.shellKills || [];
+            events.shellKills.push({ x: other.x + other.w / 2, y: other.y + other.h / 2 });
+          }
+        }
       }
     }
 
@@ -310,20 +355,118 @@ export function updatePhysics(player, input, level) {
         player.y + player.h > e.y && player.y < e.y + e.h) {
       const isFalling = player.vy > 0;
       const feetAboveMiddle = (player.y + player.h - player.vy) <= (e.y + e.h / 2);
+      const kickDir = (player.x + player.w / 2) < (e.x + e.w / 2) ? 1 : -1;
 
       if (isFalling && feetAboveMiddle) {
-        e.dead = true;
-        e.deadTimer = 30; // 30フレーム表示
-        e.vx = 0;
+        // 踏みつけ: タイプごとに応答が異なる
+        if (type === 'koopa') {
+          if (e.state === 'walk') {
+            // 甲羅にこもる
+            e.state = 'shell';
+            e.shellTimer = 0;
+            e.vx = 0;
+            e.y += 10;
+            e.h = 20;
+          } else if (e.state === 'slide') {
+            // 滑走中の甲羅を踏むと停止
+            e.state = 'shell';
+            e.shellTimer = 0;
+            e.vx = 0;
+          } else {
+            // 静止甲羅を踏むと蹴り出す
+            e.state = 'slide';
+            e.shellTimer = 0;
+            e.vx = kickDir * SHELL_SPEED;
+          }
+        } else if (type === 'flyer') {
+          // 羽を失って歩行型に落ちる (パタパタ→クリボー風)
+          e.type = 'walker';
+          e.w = 24;
+          e.h = 24;
+          e.vx = -0.7;
+          e.vy = 0;
+        } else {
+          e.dead = true;
+          e.deadTimer = 30; // 30フレーム表示
+          e.vx = 0;
+        }
         player.vy = -5.0; // 踏みつけ跳ね返り
         player.jumping = true;
         player.riseFrames = 0;
         player.jumpCut = false;
         events.stomped = true;
-      } else {
-        events.spike = true; // 死亡
+      } else if (type === 'koopa' && e.state === 'shell') {
+        // 静止甲羅に横から触れると蹴り出す (ダメージなし)
+        e.state = 'slide';
+        e.shellTimer = 0;
+        e.vx = kickDir * SHELL_SPEED;
+        events.kicked = true;
+      } else if (!(player.invincible > 0)) {
+        events.spike = true; // 被ダメージ (スーパー時は縮小、スモール時はミス)
       }
     }
+  }
+  // 踏み潰し表示が終わった敵を取り除く
+  level.enemies = level.enemies.filter((e) => !e.dead || e.deadTimer > 0);
+
+  // ---------- きのこアイテムの更新 ----------
+  if (level.items && level.items.length > 0) {
+    for (const it of level.items) {
+      if (it.state === 'rising') {
+        // 叩かれたブロックの上面からせり上がる (この間は衝突なし)
+        it.y -= 0.5;
+        if (it.y <= it.targetY) {
+          it.y = it.targetY;
+          it.state = 'move';
+          it.vx = ITEM_SPEED;
+        }
+        continue;
+      }
+
+      // 自走: 重力あり・壁で反転・崖からはSMB準拠でそのまま落ちる
+      it.vy += G_FALL;
+      if (it.vy > TERMINAL_V) it.vy = TERMINAL_V;
+
+      it.x += it.vx;
+      const hx = collidesSolid(level, it.x, it.y, it.w, it.h);
+      if (hx) {
+        if (it.vx > 0) {
+          it.x = hx.tx * TILE - it.w - INSET;
+        } else {
+          it.x = (hx.tx + 1) * TILE + INSET;
+        }
+        it.vx *= -1;
+      }
+
+      it.y += it.vy;
+      const hy = collidesSolid(level, it.x, it.y, it.w, it.h);
+      if (hy) {
+        if (it.vy > 0) {
+          it.y = hy.ty * TILE - it.h - INSET;
+          it.vy = 0;
+        } else {
+          it.y = (hy.ty + 1) * TILE + INSET;
+          it.vy = 0;
+        }
+      } else if (it.vy > 0) {
+        const ow = oneWayLanding(level, it);
+        if (ow) {
+          it.y = ow.ty * TILE - it.h - INSET;
+          it.vy = 0;
+        }
+      }
+
+      // 画面外落下で消滅
+      if (it.y > level.pixelHeight + TILE * 2) it.collected = true;
+
+      // プレイヤーの取得判定
+      if (player.x + player.w > it.x && player.x < it.x + it.w &&
+          player.y + player.h > it.y && player.y < it.y + it.h) {
+        it.collected = true;
+        events.powerup = true;
+      }
+    }
+    level.items = level.items.filter((it) => !it.collected);
   }
 
   // ---------- 非ソリッドタイルとの接触 (コイン・トゲ・ゴール) ----------
@@ -334,7 +477,7 @@ export function updatePhysics(player, input, level) {
     } else if (ch === 'H') {
       // トゲはタイル下半分のみ危険域
       const spikeTop = ty * TILE + TILE * 0.4;
-      if (player.y + player.h > spikeTop) events.spike = true;
+      if (player.y + player.h > spikeTop && !(player.invincible > 0)) events.spike = true;
     } else if (ch === 'G' || ch === 'g') {
       events.goal = true;
     }

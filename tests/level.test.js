@@ -43,6 +43,38 @@ describe('level.js - ステージデータのロードとタイム記録', () =>
       expect(lvl.grid[startTy][startTx]).not.toBe('S');
     });
 
+    it('M (きのこ入りハテナ) がグリッドにソリッドタイルとして残ること', () => {
+      const lvl = new Level(0); // Stage 1 には M が1つある
+      let found = 0;
+      for (let y = 0; y < lvl.height; y++) {
+        for (let x = 0; x < lvl.width; x++) {
+          if (lvl.grid[y][x] === 'M') found++;
+        }
+      }
+      expect(found).toBeGreaterThan(0);
+      expect(lvl.items).toEqual([]); // アイテムは叩くまで出現しない
+    });
+
+    it('K (ノコノコ風) と F (パタパタ風) がタイプ付きで抽出されること', () => {
+      const lvl2 = new Level(1); // Stage 2 には K がいる
+      expect(lvl2.enemies.some((e) => e.type === 'koopa' && e.state === 'walk')).toBe(true);
+
+      const lvl3 = new Level(2); // Stage 3 には F がいる
+      const flyer = lvl3.enemies.find((e) => e.type === 'flyer');
+      expect(flyer).toBeDefined();
+      expect(flyer.baseY).toBeGreaterThan(0);
+
+      // グリッドからは消えていること
+      for (const lvl of [lvl2, lvl3]) {
+        for (let y = 0; y < lvl.height; y++) {
+          for (let x = 0; x < lvl.width; x++) {
+            expect(lvl.grid[y][x]).not.toBe('K');
+            expect(lvl.grid[y][x]).not.toBe('F');
+          }
+        }
+      }
+    });
+
     it('マップ上の E (敵キャラ) を抽出し、enemies 配列に追加された上でグリッドから消えていること', () => {
       const lvl = new Level(0); // Stage 1
       

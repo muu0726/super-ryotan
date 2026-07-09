@@ -8,7 +8,8 @@ import { TILE, G_FALL, updatePhysics, V_WALK_MAX } from './physics.js';
 import { Level, LEVEL_COUNT, LEVEL_NAMES, loadProgress, saveProgress, loadBestTime, saveBestTime } from './level.js';
 import {
   unlockAudio, sfxJump, sfxCoin, sfxBump, sfxBlock,
-  sfxDeath, sfxClear, sfxSelect, sfxKick, sfxBreak
+  sfxDeath, sfxClear, sfxSelect, sfxKick, sfxBreak,
+  sfxFlag, sfxFirework, sfxPowerup, sfxShrink
 } from './audio.js';
 
 const VIEW_W = 800;
@@ -35,11 +36,14 @@ sprite.src = import.meta.env.BASE_URL + encodeURIComponent('character.png');
 
 // ---- プレイヤー ----
 const PLAYER_W = 24;
-const PLAYER_H = 44;
+const PLAYER_H = 44;        // スモール時の高さ
+const PLAYER_H_SUPER = 58;  // スーパー時の高さ (SMB準拠: きのこで大きくなる)
 
 const player = {
   x: 0, y: 0, w: PLAYER_W, h: PLAYER_H,
   vx: 0, vy: 0,
+  power: 'small', // small | super
+  invincible: 0,  // 被弾後の無敵残りフレーム
   facing: 1,
   onGround: false,
   jumping: false,
@@ -61,6 +65,11 @@ let stageNum = 1;
 let coins = 0;
 let camX = 0;
 let clearTimer = 0;
+// ゴール演出 (SMB1準拠: ポール滑降 → 飛び降り → 歩き去り + 花火)
+let clearPhase = '';    // slide | pause | hop | walk
+let clearPhaseTimer = 0;
+let clearFlagDrop = 0;  // 旗の下降量 (px)
+let clearBonus = 0;     // ポールを掴んだ高さによるボーナスコイン
 let stageToast = 0;
 let elapsed = 0; // 描画演出用フレームカウンタ
 let playTimer = 0; // プレイ時間 (フレーム)
@@ -80,6 +89,9 @@ function loadStage(n) {
   camX = 0;
   level.cameraX = 0;
   clearTimer = 0;
+  clearPhase = '';
+  clearPhaseTimer = 0;
+  clearFlagDrop = 0;
   stageToast = 110;
   bumps.clear();
   particles = [];
@@ -95,6 +107,9 @@ function respawn() {
   player.y = level.startY;
   player.vx = 0;
   player.vy = 0;
+  player.power = 'small';
+  player.h = PLAYER_H;
+  player.invincible = 0;
   player.facing = 1;
   player.onGround = false;
   player.jumping = false;
@@ -113,14 +128,73 @@ function startDeath() {
   sfxDeath();
 }
 
+// きのこ取得: スモール → スーパー (足元基準で当たり判定を上に伸ばす)
+function growPlayer() {
+  player.power = 'super';
+  player.y -= PLAYER_H_SUPER - PLAYER_H;
+  player.h = PLAYER_H_SUPER;
+  sfxPowerup();
+  particles.push({
+    x: player.x + player.w / 2, y: player.y - 10,
+    vy: -0.5, t: 0, life: 60, kind: 'text', text: 'パワーアップ!',
+  });
+}
+
+// 被弾: スーパー → スモール + 無敵時間 (SMB準拠)
+function shrinkPlayer() {
+  player.power = 'small';
+  player.y += PLAYER_H_SUPER - PLAYER_H;
+  player.h = PLAYER_H;
+  player.invincible = 120;
+  sfxShrink();
+}
+
 function startClear() {
   mode = 'clear';
   clearTimer = 0;
+  clearPhase = 'slide';
+  clearPhaseTimer = 0;
+  clearFlagDrop = 0;
+
+  // ポール左側に張り付く (SMB1: 触れた側からそのまま滑り降りる)
+  const poleCX = level.goalX * TILE + TILE / 2;
+  player.x = poleCX - player.w + 2;
   player.vx = 0;
+  player.vy = 0;
+  player.facing = 1;
+
+  // 掴んだ高さでボーナス (SMB1: 高いほど高得点 100〜5000点 → 本作はコインで換算)
+  const baseY = (level.goalY + 1) * TILE;
+  const topY = baseY - TILE * 5.5;
+  const grabRatio = 1 - (player.y + player.h - topY) / (baseY - topY);
+  clearBonus = grabRatio > 0.8 ? 10 : grabRatio > 0.6 ? 5 : grabRatio > 0.4 ? 3 : grabRatio > 0.2 ? 2 : 1;
+
   const clearTime = playTimer / 60;
   newRecord = saveBestTime(stageNum, clearTime);
   saveProgress(stageNum + 1);
-  sfxClear();
+  sfxFlag();
+}
+
+function finishClear() {
+  showScreen(stageNum >= LEVEL_COUNT ? 'allclear-screen' : 'clear-screen');
+  mode = 'menu';
+}
+
+function spawnFirework(x, y) {
+  const colors = ['#ffd23f', '#ff5c7a', '#4ecdc4', '#9b5de5', '#fff6c9'];
+  for (let i = 0; i < 18; i++) {
+    const ang = (i / 18) * Math.PI * 2;
+    const spd = 1.2 + Math.random() * 1.4;
+    particles.push({
+      x, y,
+      vx: Math.cos(ang) * spd,
+      vy: Math.sin(ang) * spd,
+      t: 0, life: 32 + Math.random() * 14,
+      kind: 'firework',
+      color: colors[(Math.random() * colors.length) | 0],
+    });
+  }
+  sfxFirework();
 }
 
 // ============================================
@@ -190,9 +264,48 @@ function updateStep() {
           x: b.tx * TILE + TILE / 2, y: b.ty * TILE - 6,
           vy: -3.2, t: 0, life: 34, kind: 'coin',
         });
+      } else if (b.kind === 'mushroom') {
+        bumps.set(`${b.tx},${b.ty}`, 0);
+        sfxBlock();
+        // きのこがブロック上面からせり上がる
+        level.items.push({
+          x: b.tx * TILE + (TILE - 24) / 2,
+          y: b.ty * TILE - 4,
+          targetY: b.ty * TILE - 24 - 0.2,
+          w: 24, h: 24,
+          vx: 0, vy: 0,
+          state: 'rising',
+        });
       } else if (b.kind === 'bump') {
         bumps.set(`${b.tx},${b.ty}`, 0);
         sfxBump();
+      }
+    }
+    if (events.powerup) {
+      if (player.power === 'small') {
+        growPlayer();
+      } else {
+        // スーパー時のきのこはコインボーナス (SMB1のスコア加算に相当)
+        coins += 2;
+        sfxCoin();
+        particles.push({
+          x: player.x + player.w / 2, y: player.y - 10,
+          vy: -0.5, t: 0, life: 50, kind: 'text', text: 'コイン +2',
+        });
+      }
+    }
+    if (events.kicked) sfxKick();
+    if (events.shellKills) {
+      sfxKick();
+      for (const k of events.shellKills) {
+        for (let i = 0; i < 6; i++) {
+          particles.push({
+            x: k.x, y: k.y,
+            vx: (i - 2.5) * 0.6,
+            vy: -1 - Math.random(),
+            t: 0, life: 24, kind: 'spark',
+          });
+        }
       }
     }
     for (const c of events.coins) {
@@ -203,8 +316,11 @@ function updateStep() {
         vy: -1.6, t: 0, life: 22, kind: 'spark',
       });
     }
-    if (events.spike || events.fellOff) {
-      startDeath();
+    if (events.fellOff) {
+      startDeath(); // 落下は状態に関わらずミス
+    } else if (events.spike) {
+      if (player.power === 'super') shrinkPlayer();
+      else startDeath();
     } else if (events.goal) {
       startClear();
     }
@@ -226,25 +342,70 @@ function updateStep() {
     }
   } else if (mode === 'clear') {
     clearTimer++;
-    // 接地していなければ落下だけ続ける
-    if (!player.onGround) {
-      player.vy = Math.min(player.vy + G_FALL, 8);
-      player.y += player.vy;
-      const footTy = Math.floor((player.y + player.h) / TILE);
-      const ch = level.tileAt(Math.floor((player.x + player.w / 2) / TILE), footTy);
-      if (ch === '#' || ch === '=' || ch === 'B' || ch === 'U' || ch === '?') {
-        player.y = footTy * TILE - player.h;
-        player.vy = 0;
-        player.onGround = true;
+    clearPhaseTimer++;
+    const baseY = (level.goalY + 1) * TILE;
+    const poleTopY = baseY - TILE * 5.5;
+    const slideEndY = baseY - player.h;
+    const flagDropMax = (baseY - 10) - (poleTopY + 6) - 26; // 旗がポール下端に達するまで
+
+    if (clearPhase === 'slide') {
+      // プレイヤーと旗が一緒にポールを滑り降りる
+      player.y = Math.min(player.y + 2.4, slideEndY);
+      clearFlagDrop = Math.min(clearFlagDrop + 3, flagDropMax);
+      if (player.y >= slideEndY && clearFlagDrop >= flagDropMax) {
+        clearPhase = 'pause';
+        clearPhaseTimer = 0;
       }
-    }
-    if (clearTimer === 110) {
-      if (stageNum >= LEVEL_COUNT) {
-        showScreen('allclear-screen');
-      } else {
-        showScreen('clear-screen');
+    } else if (clearPhase === 'pause') {
+      // 一拍おいてポールの反対側へ飛び降りる (SMB1準拠)
+      if (clearPhaseTimer >= 22) {
+        clearPhase = 'hop';
+        clearPhaseTimer = 0;
+        player.vx = 1.5;
+        player.vy = -3.8;
+        player.onGround = false;
+        coins += clearBonus;
+        particles.push({
+          x: player.x + player.w / 2 + 14, y: player.y - 8,
+          vy: -0.5, t: 0, life: 70, kind: 'text', text: `コイン +${clearBonus}`,
+        });
+        sfxClear();
       }
-      mode = 'menu';
+    } else if (clearPhase === 'hop' || clearPhase === 'walk') {
+      if (clearPhase === 'walk') {
+        player.vx = 2.0;
+        player.animDist += player.vx;
+      }
+      player.x += player.vx;
+      if (!player.onGround) {
+        player.vy = Math.min(player.vy + G_FALL, 8);
+        player.y += player.vy;
+        const footTy = Math.floor((player.y + player.h) / TILE);
+        const ch = level.tileAt(Math.floor((player.x + player.w / 2) / TILE), footTy);
+        if (player.vy > 0 && (ch === '#' || ch === '=' || ch === 'B' || ch === 'U' || ch === '?' || ch === 'M')) {
+          player.y = footTy * TILE - player.h;
+          player.vy = 0;
+          player.onGround = true;
+          if (clearPhase === 'hop') {
+            clearPhase = 'walk';
+            clearPhaseTimer = 0;
+          }
+        }
+      }
+      if (clearPhase === 'walk') {
+        // 打ち上げ花火 (SMB1オマージュ)
+        if (clearPhaseTimer === 15 || clearPhaseTimer === 42 || clearPhaseTimer === 69) {
+          spawnFirework(
+            camX + VIEW_W * (0.35 + Math.random() * 0.4),
+            70 + Math.random() * 90,
+          );
+        }
+        const offRight = player.x - camX > VIEW_W - 40 ||
+          player.x > level.pixelWidth - TILE;
+        if (clearPhaseTimer >= 140 || offRight) finishClear();
+      }
+      // 安全弁: 万一足場がなく落ち続けた場合もクリア画面へ
+      if (player.y > level.pixelHeight + 200) finishClear();
     }
   }
 
@@ -257,7 +418,10 @@ function updateStep() {
     p.t++;
     p.y += p.vy;
     if (p.vx) p.x += p.vx;
-    p.vy += p.kind === 'debris' ? 0.24 : 0.12;
+    p.vy += p.kind === 'debris' ? 0.24
+      : p.kind === 'firework' ? 0.04
+      : p.kind === 'text' ? 0
+      : 0.12;
     if (p.kind === 'debris' && p.rot !== undefined) {
       p.rot += p.rotV || 0;
     }
@@ -359,7 +523,8 @@ function drawTile(ch, tx, ty, cam) {
       ctx.fillRect(x, y + 2, TILE, 4);
       break;
     }
-    case '?': {
+    case '?':
+    case 'M': { // きのこ入りも見た目は同じハテナブロック (SMB準拠で中身は開けるまで不明)
       const pulse = (Math.sin(elapsed * 0.12) + 1) * 0.5;
       ctx.fillStyle = '#c98f1b';
       ctx.fillRect(x, y, TILE, TILE);
@@ -424,13 +589,14 @@ function drawGoal(cam) {
   ctx.fillStyle = '#ffd23f';
   ctx.fill();
 
-  // 旗 (はためき)
+  // 旗 (はためき / クリア時はプレイヤーと一緒に下降)
   const wave = Math.sin(elapsed * 0.1) * 4;
+  const flagY = topY + 6 + clearFlagDrop;
   ctx.fillStyle = '#ff5c7a';
   ctx.beginPath();
-  ctx.moveTo(x + 2, topY + 6);
-  ctx.lineTo(x + 40 + wave, topY + 18);
-  ctx.lineTo(x + 2, topY + 32);
+  ctx.moveTo(x + 2, flagY);
+  ctx.lineTo(x + 40 + wave, flagY + 12);
+  ctx.lineTo(x + 2, flagY + 26);
   ctx.closePath();
   ctx.fill();
 
@@ -443,6 +609,8 @@ function drawPlayer(rx, ry) {
   let frame;
   if (mode === 'dying') {
     frame = SPRITE_FRAMES.fall;
+  } else if (mode === 'clear' && (clearPhase === 'slide' || clearPhase === 'pause')) {
+    frame = SPRITE_FRAMES.jump; // ポールに掴まる滑降ポーズ
   } else if (!player.onGround) {
     frame = SPRITE_FRAMES.jump;
   } else if (Math.abs(player.vx) > 0.3) {
@@ -451,12 +619,16 @@ function drawPlayer(rx, ry) {
     frame = SPRITE_FRAMES.idle;
   }
 
-  const dh = 46;
+  const dh = player.h + 2; // パワー状態に応じた描画サイズ (small 46 / super 60)
   const dw = dh * (frame.w / frame.h);
   const cx = rx + player.w / 2;
   const footY = ry + player.h;
 
   ctx.save();
+  // 被弾後の無敵点滅
+  if (player.invincible > 0 && mode === 'play' && player.invincible % 6 < 3) {
+    ctx.globalAlpha = 0.35;
+  }
   ctx.translate(cx, footY - dh / 2);
   if (mode === 'dying') {
     ctx.rotate(player.deathRot);
@@ -483,6 +655,17 @@ function drawParticles(cam) {
       ctx.beginPath();
       ctx.ellipse(p.x - cam, p.y, 7, 10, 0, 0, Math.PI * 2);
       ctx.fill();
+    } else if (p.kind === 'firework') {
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x - cam, p.y, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (p.kind === 'text') {
+      ctx.fillStyle = '#ffd23f';
+      ctx.font = 'bold 16px "Segoe UI", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(p.text, p.x - cam, p.y);
     } else {
       ctx.fillStyle = '#fff6c9';
       ctx.beginPath();
@@ -531,7 +714,8 @@ function drawHUD() {
     ctx.globalAlpha = 1;
   }
 
-  if (mode === 'clear') {
+  // SMB1準拠: 滑降が終わってから "COURSE CLEAR!" とファンファーレ
+  if (mode === 'clear' && clearPhase !== 'slide') {
     ctx.textAlign = 'center';
     ctx.font = 'bold 34px "Segoe UI", sans-serif';
     ctx.fillStyle = '#ffd23f';
@@ -550,10 +734,119 @@ function drawHUD() {
   }
 }
 
+// きのこアイテム (ネオン調): 傘 + 斑点 + 目
+function drawItem(it, cam) {
+  const x = it.x - cam;
+  const y = it.y;
+  if (x < -32 || x > VIEW_W) return;
+
+  // 軸
+  ctx.fillStyle = '#eef1ff';
+  ctx.fillRect(x + 6, y + 12, 12, 12);
+  // 傘
+  ctx.fillStyle = '#ff5c7a';
+  ctx.beginPath();
+  ctx.arc(x + 12, y + 12, 12, Math.PI, 0);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = '#ffd23f';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  // 斑点
+  ctx.fillStyle = '#fff6c9';
+  ctx.beginPath();
+  ctx.arc(x + 6, y + 8, 2.5, 0, Math.PI * 2);
+  ctx.arc(x + 12, y + 4, 2.5, 0, Math.PI * 2);
+  ctx.arc(x + 18, y + 8, 2.5, 0, Math.PI * 2);
+  ctx.fill();
+  // 目
+  ctx.fillStyle = '#1a2247';
+  ctx.fillRect(x + 8, y + 15, 2, 5);
+  ctx.fillRect(x + 14, y + 15, 2, 5);
+}
+
+function drawKoopa(e) {
+  const inShell = e.state === 'shell' || e.state === 'slide';
+
+  // 影
+  ctx.fillStyle = 'rgba(0,0,0,0.15)';
+  ctx.beginPath();
+  ctx.ellipse(0, e.h / 2 - 1, e.w / 2 - 2, 2, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.save();
+  if (e.state === 'slide') {
+    ctx.rotate(e.animTime * 0.35 * Math.sign(e.vx || 1)); // 滑走中はスピン
+  }
+  // 甲羅 (ターコイズネオンのドーム)
+  ctx.fillStyle = '#00f5d4';
+  ctx.beginPath();
+  ctx.arc(0, inShell ? 1 : 3, e.w / 2 - 1, Math.PI, 0);
+  ctx.rect(-e.w / 2 + 1, inShell ? 1 : 3, e.w - 2, inShell ? 6 : 5);
+  ctx.fill();
+  ctx.strokeStyle = '#9b5de5';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  // 甲羅の模様
+  ctx.strokeStyle = 'rgba(155,93,229,0.7)';
+  ctx.beginPath();
+  ctx.moveTo(-4, inShell ? -8 : -6); ctx.lineTo(-4, inShell ? 5 : 6);
+  ctx.moveTo(4, inShell ? -8 : -6); ctx.lineTo(4, inShell ? 5 : 6);
+  ctx.stroke();
+  ctx.restore();
+
+  if (!inShell) {
+    // 頭 (進行方向側) と足
+    const dir = Math.sign(e.vx || -1);
+    ctx.fillStyle = '#c1fba4';
+    ctx.beginPath();
+    ctx.arc(dir * (e.w / 2 - 1), -6, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#1a2247';
+    ctx.fillRect(dir * (e.w / 2 - 1) + dir * 1, -8, 2, 3); // 目
+    const walkWave = Math.sin(e.animTime * 0.25) * 3;
+    ctx.fillStyle = '#3a0ca3';
+    ctx.fillRect(-8 + walkWave, e.h / 2 - 4, 6, 4);
+    ctx.fillRect(2 - walkWave, e.h / 2 - 4, 6, 4);
+  }
+}
+
+function drawFlyer(e) {
+  const flap = Math.sin(e.animTime * 0.3);
+
+  // 羽 (左右にパタパタ)
+  ctx.fillStyle = 'rgba(238,241,255,0.85)';
+  ctx.beginPath();
+  ctx.moveTo(-e.w / 2 + 2, -2);
+  ctx.lineTo(-e.w / 2 - 8, -6 - flap * 6);
+  ctx.lineTo(-e.w / 2 + 4, 4);
+  ctx.closePath();
+  ctx.moveTo(e.w / 2 - 2, -2);
+  ctx.lineTo(e.w / 2 + 8, -6 - flap * 6);
+  ctx.lineTo(e.w / 2 - 4, 4);
+  ctx.closePath();
+  ctx.fill();
+
+  // 体 (イエローネオン)
+  ctx.fillStyle = '#ffd23f';
+  ctx.beginPath();
+  ctx.arc(0, -1, e.w / 2 - 3, Math.PI, 0);
+  ctx.rect(-e.w / 2 + 3, -1, e.w - 6, e.h / 2);
+  ctx.fill();
+  ctx.strokeStyle = '#f15bb5';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // 目
+  ctx.fillStyle = '#1a2247';
+  ctx.fillRect(-5, -4, 3, 4);
+  ctx.fillRect(2, -4, 3, 4);
+}
+
 function drawEnemy(e, cam) {
   const rx = e.x - cam;
   const ry = e.y;
-  if (rx < -e.w || rx > VIEW_W) return;
+  if (rx < -e.w - 12 || rx > VIEW_W + 12) return;
 
   ctx.save();
   ctx.translate(rx + e.w / 2, ry + e.h / 2);
@@ -568,6 +861,10 @@ function drawEnemy(e, cam) {
     ctx.strokeStyle = 'rgba(255, 92, 122, 0.5)';
     ctx.lineWidth = 2;
     ctx.stroke();
+  } else if (e.type === 'koopa') {
+    drawKoopa(e);
+  } else if (e.type === 'flyer') {
+    drawFlyer(e);
   } else {
     // 歩行足のアニメ
     const walkWave = Math.sin(e.animTime * 0.25) * 3;
@@ -606,6 +903,13 @@ function drawEnemy(e, cam) {
 
 function draw(renderX, renderY, renderCam) {
   drawBackground(renderCam);
+
+  // アイテムはタイルより先に描画し、出現途中はブロックの裏に隠れるようにする
+  if (level && level.items) {
+    for (const it of level.items) {
+      drawItem(it, renderCam);
+    }
+  }
 
   const x0 = Math.floor(renderCam / TILE) - 1;
   const x1 = x0 + Math.ceil(VIEW_W / TILE) + 2;

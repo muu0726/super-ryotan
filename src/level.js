@@ -1,7 +1,8 @@
 // ============================================
 // 10ステージのマップデータと生成ロジック
-// 記号: #=地面 B=レンガ ==浮き足場 ?=ハテナ U=使用済み
+// 記号: #=地面 B=レンガ ==浮き足場 ?=ハテナ M=きのこ入りハテナ U=使用済み
 //       o=コイン H=トゲ G=ゴール S=スタート .=空間
+//       E=クリボー風 K=ノコノコ風 F=パタパタ風
 // 各ステージは14行。短い行はパーサが '.' で右側を埋める。
 // ============================================
 
@@ -18,7 +19,7 @@ const LEVEL_1 = [
   '',
   '',
   D(71) + 'ooo',
-  D(15) + '?.?.?',
+  D(15) + '?.M.?',
   D(70) + '=====',
   D(3) + 'S' + D(12) + 'E' + D(10) + 'ooooo' + D(12) + 'E' + D(5) + 'ooooo' + D(33) + 'G',
   L1_GROUND,
@@ -35,7 +36,7 @@ const LEVEL_2 = [
   '',
   D(50) + '?' + D(23) + 'ooo',
   D(24) + 'E' + D(1) + '####' + D(30) + 'ooo',
-  D(3) + 'S' + D(16) + '##########' + D(10) + 'HHH' + D(8) + 'E' + D(8) + 'HHH' + D(37) + 'G',
+  D(3) + 'S' + D(16) + '##########' + D(10) + 'HHH' + D(8) + 'K' + D(8) + 'HHH' + D(37) + 'G',
   L2_GROUND,
   L2_GROUND,
 ];
@@ -46,7 +47,7 @@ const LEVEL_3 = [
   '', '', '', '', '',
   '',
   '',
-  '',
+  D(52) + 'F',
   D(27) + 'oooo' + D(3) + 'oooo' + D(41) + 'oooo' + D(3) + 'oooo',
   D(55) + '??',
   D(27) + '====' + D(3) + '====' + D(3) + '=====' + D(26) + '====' + D(3) + '====' + D(3) + '=====',
@@ -65,7 +66,7 @@ const LEVEL_4 = [
   '',
   '',
   '',
-  D(83) + '?',
+  D(83) + 'M',
   D(47) + 'ooo' + D(14) + 'ooo' + D(6) + 'ooo',
   D(3) + 'S' + D(5) + 'E' + D(75) + 'E' + D(1) + 'HHH' + D(14) + 'G',
   L4_GROUND,
@@ -88,7 +89,7 @@ const LEVEL_5 = [
   L5_PILLAR,
   D(15) + '?' + D(29) + 'ooo' + D(25) + 'ooo',
   D(20) + 'oo' + D(48) + 'oo',
-  D(3) + 'S' + D(18) + 'E' + D(14) + 'HH' + D(22) + 'E' + D(3) + 'HHH' + D(32) + 'G',
+  D(3) + 'S' + D(18) + 'E' + D(14) + 'HH' + D(22) + 'K' + D(3) + 'HHH' + D(32) + 'G',
   L5_GROUND,
   L5_GROUND,
 ];
@@ -99,7 +100,7 @@ const LEVEL_6 = [
   '', '', '', '', '',
   '',
   '',
-  '',
+  D(70) + 'F',
   D(38) + 'ooo' + D(11) + 'ooo' + D(11) + 'ooo',
   D(78) + '?',
   D(31) + '===' + D(4) + '===' + D(4) + '===' + D(4) + '===' + D(4) + '===' + D(4) + '===',
@@ -116,7 +117,7 @@ const LEVEL_7 = [
   D(34) + 'oooooooo',
   '',
   D(29) + W(15),
-  D(26) + W(21) + D(48) + '?.?',
+  D(26) + W(21) + D(48) + '?.M',
   D(23) + W(27) + D(11) + '===',
   D(3) + 'S' + D(11) + 'E' + D(4) + W(33) + D(22) + 'HHH' + D(2) + 'E' + D(4) + 'HHH' + D(24) + 'G',
   L7_GROUND,
@@ -133,7 +134,7 @@ const LEVEL_8 = [
   '',
   D(20) + '??',
   D(40) + 'oooo' + D(26) + 'oooo' + D(21) + 'oooo',
-  D(3) + 'S' + D(21) + 'E' + D(29) + 'HH' + D(15) + 'E' + D(11) + 'HH' + D(30) + 'G',
+  D(3) + 'S' + D(21) + 'E' + D(29) + 'HH' + D(15) + 'K' + D(11) + 'HH' + D(30) + 'G',
   L8_GROUND,
   L8_GROUND,
 ];
@@ -142,12 +143,12 @@ const LEVEL_8 = [
 const L9_GROUND = W(20) + D(79) + W(11);
 const LEVEL_9 = [
   '', '', '', '',
-  '',
+  D(60) + 'F',
   D(33) + 'E' + D(1) + 'oo' + D(5) + 'oo',
   D(34) + '====' + D(3) + '====',
   D(48) + '====' + D(3) + '====',
   D(28) + '====' + D(29) + 'oo',
-  D(10) + '?' + D(50) + '====' + D(3) + '====',
+  D(10) + 'M' + D(50) + '====' + D(3) + '====',
   D(22) + '====' + D(48) + '====' + D(2) + '====' + D(2) + '====' + D(2) + '====',
   D(3) + 'S' + D(6) + 'E' + D(91) + 'G',
   L9_GROUND,
@@ -160,11 +161,11 @@ const LEVEL_10 = [
   '', '', '', '', '',
   '',
   '',
-  '',
+  D(85) + 'F',
   D(77) + '===' + D(20) + 'ooo',
-  D(60) + '?.?',
+  D(60) + 'M.?',
   D(40) + '##' + D(9) + '===' + D(18) + '===' + D(8) + '===' + D(3) + '===' + D(7) + '===' + D(4) + '===',
-  D(3) + 'S' + D(11) + 'HH' + D(3) + 'E' + D(1) + 'HH' + D(16) + '##' + D(2) + 'HH' + D(12) + 'E' + D(5) + 'HH' + D(33) + 'HHH' + D(1) + 'E' + D(2) + 'HHH' + D(14) + 'G',
+  D(3) + 'S' + D(11) + 'HH' + D(3) + 'E' + D(1) + 'HH' + D(16) + '##' + D(2) + 'HH' + D(12) + 'K' + D(5) + 'HH' + D(33) + 'HHH' + D(1) + 'E' + D(2) + 'HHH' + D(14) + 'G',
   L10_GROUND,
   L10_GROUND,
 ];
@@ -182,6 +183,41 @@ export const LEVEL_NAMES = [
 
 export const LEVEL_COUNT = RAW_LEVELS.length;
 
+// マップ記号から敵エンティティを生成する
+// E=クリボー風(巡回・崖で反転) K=ノコノコ風(踏むと甲羅化) F=パタパタ風(上下浮遊)
+function makeEnemy(ch, tx, ty) {
+  const common = { vy: 0, onGround: false, dead: false, deadTimer: 0, animTime: 0 };
+  if (ch === 'K') {
+    return {
+      ...common,
+      type: 'koopa', state: 'walk', shellTimer: 0,
+      x: tx * TILE + (TILE - 24) / 2,
+      y: ty * TILE + (TILE - 30) - 0.2,
+      w: 24, h: 30,
+      vx: -0.6,
+    };
+  }
+  if (ch === 'F') {
+    const baseY = ty * TILE + 4;
+    return {
+      ...common,
+      type: 'flyer',
+      x: tx * TILE + (TILE - 26) / 2,
+      y: baseY, baseY,
+      w: 26, h: 22,
+      vx: 0,
+    };
+  }
+  return {
+    ...common,
+    type: 'walker',
+    x: tx * TILE + (TILE - 24) / 2,
+    y: ty * TILE + (TILE - 24) - 0.2, // 地面にぴったり接地
+    w: 24, h: 24,
+    vx: -0.7,
+  };
+}
+
 export class Level {
   constructor(index) {
     this.index = index;
@@ -194,6 +230,7 @@ export class Level {
     this.startY = TILE * 10;
     this.cameraX = 0;
     this.enemies = []; // 敵のリスト
+    this.items = [];   // 出現中のきのこ等のアイテム
 
     // スタート位置、ゴールポール、敵の検出
     for (let y = 0; y < this.height; y++) {
@@ -212,18 +249,8 @@ export class Level {
               this.grid[y - dy][x] = 'g';
             }
           }
-        } else if (ch === 'E') {
-          // 敵をスポーンさせる (幅24px、高さ24px)
-          this.enemies.push({
-            x: x * TILE + (TILE - 24) / 2,
-            y: y * TILE + (TILE - 24) - 0.2, // 地面にぴったり接地
-            w: 24, h: 24,
-            vx: -0.7, vy: 0,
-            onGround: false,
-            dead: false,
-            deadTimer: 0,
-            animTime: 0
-          });
+        } else if (ch === 'E' || ch === 'K' || ch === 'F') {
+          this.enemies.push(makeEnemy(ch, x, y));
           this.grid[y][x] = '.';
         }
       }

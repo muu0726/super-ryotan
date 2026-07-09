@@ -7,7 +7,9 @@ import {
   JUMP_V,
   JUMP_V_DASH,
   G_RISE,
-  G_FALL
+  G_FALL,
+  SHELL_SPEED,
+  ITEM_SPEED
 } from '../src/physics.js';
 
 describe('physics.js - マリオ物理演算の検証', () => {
@@ -234,6 +236,162 @@ describe('physics.js - マリオ物理演算の検証', () => {
       }
       expect(jumped).toBe(true);
       expect(player.vy).toBeLessThan(0);
+    });
+  });
+
+  describe('6. パワーアップ・きのこ・無敵時間', () => {
+    it('無敵時間中は敵に横から触れてもダメージを受けず、無敵が減少すること', () => {
+      const enemy = {
+        x: 50, y: 32, w: 24, h: 24,
+        vx: -0.7, vy: 0, dead: false, deadTimer: 0, animTime: 0,
+      };
+      level.enemies = [enemy];
+      player.x = 40;
+      player.y = 32;
+      player.invincible = 10;
+
+      const events = updatePhysics(player, input, level);
+
+      expect(events.spike).toBe(false);
+      expect(player.invincible).toBe(9);
+    });
+
+    it('きのこがブロックからせり上がった後、自走を開始すること', () => {
+      level.items = [{
+        x: 100, y: 5 * TILE - 4, targetY: 5 * TILE - 24 - 0.2,
+        w: 24, h: 24, vx: 0, vy: 0, state: 'rising',
+      }];
+      // せり上がり (0.5px/frame) が完了するまで回す
+      for (let i = 0; i < 60; i++) updatePhysics(player, input, level);
+      const it = level.items[0];
+      expect(it.state).toBe('move');
+      expect(it.vx).toBe(ITEM_SPEED);
+    });
+
+    it('自走中のきのこが地面上を移動し、重力で接地を維持すること', () => {
+      const item = {
+        x: 100, y: 8 * TILE - 24 - 0.2,
+        w: 24, h: 24, vx: ITEM_SPEED, vy: 0, state: 'move',
+      };
+      level.items = [item];
+      const x0 = item.x;
+      for (let i = 0; i < 10; i++) updatePhysics(player, input, level);
+      expect(item.x).toBeGreaterThan(x0);
+      expect(item.y + item.h).toBeLessThanOrEqual(8 * TILE);
+    });
+
+    it('プレイヤーがきのこに触れると powerup イベントが発生し、アイテムが消えること', () => {
+      level.items = [{
+        x: player.x, y: player.y,
+        w: 24, h: 24, vx: ITEM_SPEED, vy: 0, state: 'move',
+      }];
+      const events = updatePhysics(player, input, level);
+      expect(events.powerup).toBe(true);
+      expect(level.items.length).toBe(0);
+    });
+  });
+
+  describe('7. ノコノコ風 (koopa) と甲羅', () => {
+    const makeKoopa = (x, y) => ({
+      type: 'koopa', state: 'walk', shellTimer: 0,
+      x, y, w: 24, h: 30,
+      vx: -0.6, vy: 0, onGround: true, dead: false, deadTimer: 0, animTime: 0,
+    });
+
+    it('歩行中のノコノコを踏むと甲羅状態になること (死なない)', () => {
+      const koopa = makeKoopa(32, 8 * TILE - 30);
+      level.enemies = [koopa];
+      player.vy = 2.0;
+      player.y = koopa.y - player.h + 1; // 敵の天面に少し重なる
+      player.x = koopa.x;
+
+      const events = updatePhysics(player, input, level);
+
+      expect(koopa.dead).toBe(false);
+      expect(koopa.state).toBe('shell');
+      expect(koopa.vx).toBe(0);
+      expect(events.stomped).toBe(true);
+      expect(player.vy).toBe(-5.0); // 跳ね返り
+    });
+
+    it('静止甲羅に横から触れると蹴り出され、滑走すること (ダメージなし)', () => {
+      const shell = makeKoopa(60, 8 * TILE - 20);
+      shell.state = 'shell';
+      shell.h = 20;
+      shell.vx = 0;
+      level.enemies = [shell];
+      // プレイヤーが左から接触
+      player.x = 44;
+      player.y = 8 * TILE - player.h;
+      player.vy = 0;
+
+      const events = updatePhysics(player, input, level);
+
+      expect(events.spike).toBe(false);
+      expect(events.kicked).toBe(true);
+      expect(shell.state).toBe('slide');
+      expect(shell.vx).toBe(SHELL_SPEED); // 左から蹴ったので右へ滑走
+    });
+
+    it('滑走中の甲羅が他の敵に当たると連鎖撃破すること', () => {
+      const shell = makeKoopa(50, 8 * TILE - 20);
+      shell.state = 'slide';
+      shell.h = 20;
+      shell.vx = SHELL_SPEED;
+      const victim = {
+        x: 60, y: 8 * TILE - 24,
+        w: 24, h: 24, vx: -0.7, vy: 0,
+        onGround: true, dead: false, deadTimer: 0, animTime: 0,
+      };
+      level.enemies = [shell, victim];
+      player.x = 200; // プレイヤーは離れた場所
+      player.y = 0;
+
+      const events = updatePhysics(player, input, level);
+
+      expect(victim.dead).toBe(true);
+      expect(events.shellKills.length).toBe(1);
+    });
+  });
+
+  describe('8. パタパタ風 (flyer)', () => {
+    it('上下に浮遊し、地形や重力の影響を受けないこと', () => {
+      const baseY = 4 * TILE;
+      const flyer = {
+        type: 'flyer', x: 200, y: baseY, baseY,
+        w: 26, h: 22, vx: 0, vy: 0,
+        onGround: false, dead: false, deadTimer: 0, animTime: 0,
+      };
+      level.enemies = [flyer];
+      player.x = 0; player.y = 0;
+
+      let minY = Infinity, maxY = -Infinity;
+      for (let i = 0; i < 200; i++) {
+        updatePhysics(player, input, level);
+        minY = Math.min(minY, flyer.y);
+        maxY = Math.max(maxY, flyer.y);
+      }
+      expect(minY).toBeGreaterThanOrEqual(baseY - 28.01); // 振幅28pxの範囲内
+      expect(maxY).toBeLessThanOrEqual(baseY + 28.01);
+      expect(maxY - minY).toBeGreaterThan(20); // 実際に上下している
+    });
+
+    it('踏むと羽を失い歩行型 (walker) に変化すること', () => {
+      const flyer = {
+        type: 'flyer', x: 32, y: 100, baseY: 100,
+        w: 26, h: 22, vx: 0, vy: 0,
+        onGround: false, dead: false, deadTimer: 0, animTime: 0,
+      };
+      level.enemies = [flyer];
+      player.vy = 2.0;
+      player.x = flyer.x;
+      player.y = flyer.y - player.h + 1;
+
+      const events = updatePhysics(player, input, level);
+
+      expect(flyer.type).toBe('walker');
+      expect(flyer.dead).toBe(false);
+      expect(events.stomped).toBe(true);
     });
   });
 
