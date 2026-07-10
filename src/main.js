@@ -1008,6 +1008,32 @@ const screens = ['title-screen', 'select-screen', 'clear-screen', 'allclear-scre
 const pauseBtn = document.getElementById('btn-pause');
 const touchUi = document.getElementById('touch-ui');
 
+// ---- タッチ操作ボタンのサイズ設定 (小/中/大) ----
+const TC_SIZE_KEY = 'super-ryotan-tc-size-v1';
+const TC_SIZES = ['small', 'medium', 'large'];
+
+function loadTcSize() {
+  try {
+    const v = localStorage.getItem(TC_SIZE_KEY);
+    return TC_SIZES.includes(v) ? v : 'medium';
+  } catch {
+    return 'medium';
+  }
+}
+
+function applyTcSize(size) {
+  touchUi.classList.toggle('tc-small', size === 'small');
+  touchUi.classList.toggle('tc-large', size === 'large');
+  for (const b of document.querySelectorAll('.tc-size-btn')) {
+    b.classList.toggle('selected', b.dataset.size === size);
+  }
+  try {
+    localStorage.setItem(TC_SIZE_KEY, size);
+  } catch {
+    // localStorage 不可でもサイズはセッション中有効
+  }
+}
+
 function pauseGame() {
   if (mode !== 'play' || paused) return;
   paused = true;
@@ -1090,6 +1116,15 @@ function wireUI() {
   on('btn-pause-select', () => { buildStageGrid(); quitStage('select-screen'); });
   on('btn-pause-title', () => quitStage('title-screen'));
 
+  // タッチ操作ボタンのサイズ切り替え (タイトル・ポーズ画面の各ピッカー)
+  for (const b of document.querySelectorAll('.tc-size-btn')) {
+    b.addEventListener('click', () => {
+      unlockAudio();
+      sfxSelect();
+      applyTcSize(b.dataset.size);
+    });
+  }
+
   // ESC / P でポーズをトグル
   window.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape' && e.key.toLowerCase() !== 'p') return;
@@ -1118,6 +1153,7 @@ function fitStage() {
 initPWA();
 initInput();
 wireUI();
+applyTcSize(loadTcSize());
 fitStage();
 window.addEventListener('resize', fitStage);
 window.addEventListener('orientationchange', fitStage);
