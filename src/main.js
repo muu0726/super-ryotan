@@ -37,8 +37,11 @@ sprite.onload = () => { spriteReady = true; };
 sprite.src = import.meta.env.BASE_URL + encodeURIComponent('character.png');
 
 // ---- 髪色の付け替え (ショップ) ----
-// 金髪部分 (色相28〜55°・彩度0.3以上。肌は15〜22°、ブーツは16〜24°なので重ならない)
-// のピクセルだけ色相を差し替えたスプライトを生成してキャッシュする
+// 髪の全頭 (金髪側 + 黒髪側) を対象に色相を差し替えたスプライトを生成してキャッシュする。
+// - 金髪側: 色相28〜55°・彩度0.28以上 (肌は15〜22°、ブーツは16〜24°なので重ならない)
+// - 黒髪側: 無彩色のダークグレー rgb(24,24,24)±8 (明度0.075〜0.24)。
+//   輪郭線・目の線はほぼ純黒 (明度<0.07)、顔の暗部は赤みがあるため対象外になる
+// hue に 'rainbow' を渡すとピクセル座標に応じた虹色グラデーションになる
 let selectedHair = loadSelectedHair();
 const spriteVariants = new Map(); // hairId -> canvas
 
@@ -81,12 +84,20 @@ function buildHairVariant(hue) {
   const d = imgData.data;
   for (let i = 0; i < d.length; i += 4) {
     if (d[i + 3] < 10) continue;
-    const [h, s, l] = rgbToHsl(d[i], d[i + 1], d[i + 2]);
+    const r = d[i], g = d[i + 1], b = d[i + 2];
+    const [h, s, l] = rgbToHsl(r, g, b);
+    // にじいろは座標に応じて色相を流す (斜めのグラデーション、周期180px)
+    const px = (i / 4) % cv.width;
+    const py = ((i / 4) / cv.width) | 0;
+    const target = hue === 'rainbow' ? ((px + py * 0.6) * 2) % 360 : hue;
     if (h >= 28 && h <= 55 && s >= 0.28 && l >= 0.2 && l <= 0.85) {
-      const [r, g, b] = hslToRgb(hue, s, l);
-      d[i] = r;
-      d[i + 1] = g;
-      d[i + 2] = b;
+      // 金髪側: 色相のみ差し替え (明暗のディテールは保持)
+      const [nr, ng, nb] = hslToRgb(target, s, l);
+      d[i] = nr; d[i + 1] = ng; d[i + 2] = nb;
+    } else if (Math.max(r, g, b) - Math.min(r, g, b) <= 12 && l >= 0.075 && l <= 0.24) {
+      // 黒髪側: 同系色の暗いトーンへ着色 (彩度を持たせて色味が読めるようにする)
+      const [nr, ng, nb] = hslToRgb(target, 0.55, Math.min(0.5, l * 1.9 + 0.05));
+      d[i] = nr; d[i + 1] = ng; d[i + 2] = nb;
     }
   }
   c.putImageData(imgData, 0, 0);

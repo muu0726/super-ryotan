@@ -5,7 +5,8 @@
 
 import { loadTotalCoins, saveTotalCoins } from './level.js';
 
-// hue はスプライトの金髪ピクセルに適用する色相 (null = 原色のまま)
+// hue は髪 (金髪側 + 黒髪側の全頭) に適用する色相
+// (null = 原色の金×黒ツートンのまま、'rainbow' = 虹色グラデーション)
 export const HAIR_COLORS = [
   { id: 'gold', name: 'オリジナル', price: 0, hue: null, swatch: '#d9a441' },
   { id: 'pink', name: 'さくらピンク', price: 30, hue: 330, swatch: '#f472b6' },
@@ -13,6 +14,10 @@ export const HAIR_COLORS = [
   { id: 'green', name: 'わかばグリーン', price: 60, hue: 130, swatch: '#4ade80' },
   { id: 'purple', name: 'よるのパープル', price: 60, hue: 270, swatch: '#a78bfa' },
   { id: 'red', name: 'ほのおレッド', price: 100, hue: 0, swatch: '#f05a5a' },
+  {
+    id: 'rainbow', name: 'にじいろ', price: 1000, hue: 'rainbow',
+    swatch: 'linear-gradient(135deg, #f05a5a, #ffd23f, #4ade80, #5aa7f0, #a78bfa)',
+  },
 ];
 
 const OWNED_KEY = 'super-ryotan-shop-owned-v1';
