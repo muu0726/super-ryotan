@@ -83,6 +83,14 @@ canvas#game {
   backdrop-filter: blur(3px);
   z-index: 10;
   text-align: center;
+  /* コンテンツが画面高を超えた場合の保険 (中央揃えのはみ出しで上端が切れるのを防ぐ) */
+  overflow-y: auto;
+}
+
+@supports (justify-content: safe center) {
+  .overlay {
+    justify-content: safe center;
+  }
 }
 
 .overlay.hidden {
@@ -136,6 +144,15 @@ canvas#game {
   flex-direction: column;
   gap: 14px;
   align-items: center;
+}
+
+/* 補助ボタンの横並び行 (縦積みの高さを節約する) */
+.menu-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
 }
 
 .menu-btn {
@@ -364,6 +381,94 @@ canvas#game {
 
 .shop-item.unaffordable .item-state {
   color: var(--danger);
+}
+
+/* ---- 低い画面高 (スマホ横向き等) 向けのコンパクト表示 ----
+   #stage-wrap は 16:9 固定のサイズコンテナ。高さの低い端末では固定pxの
+   余白・フォント最小値が積み上がってタイトルが画面外へはみ出すため、
+   コンテナ高さに応じて余白とフォントを圧縮する */
+@container (max-height: 430px) {
+  .overlay {
+    gap: 10px;
+  }
+
+  .game-title {
+    font-size: clamp(20px, 7cqw, 44px);
+  }
+
+  .screen-title {
+    font-size: clamp(18px, 5cqw, 32px);
+  }
+
+  .menu {
+    gap: 8px;
+  }
+
+  .menu-btn {
+    padding: 0.5em 1.9em;
+  }
+
+  .menu-btn.small {
+    padding: 0.4em 1.2em;
+  }
+
+  .total-coins {
+    padding: 0.25em 1.2em;
+  }
+
+  .stage-grid {
+    gap: 6px;
+  }
+
+  .shop-grid {
+    gap: 7px;
+  }
+
+  .shop-item {
+    padding: 7px 5px;
+    gap: 3px;
+  }
+}
+
+@container (max-height: 350px) {
+  .overlay {
+    gap: 7px;
+  }
+
+  .game-title {
+    font-size: clamp(18px, 6cqw, 36px);
+  }
+
+  .subtitle {
+    font-size: clamp(8px, 1.7cqw, 12px);
+    letter-spacing: 0.35em;
+  }
+
+  .menu {
+    gap: 6px;
+  }
+
+  .menu-btn {
+    font-size: clamp(12px, 2.6cqw, 17px);
+    padding: 0.42em 1.6em;
+  }
+
+  .menu-btn.small {
+    font-size: clamp(10px, 2cqw, 13px);
+    padding: 0.35em 1em;
+  }
+
+  .total-coins {
+    font-size: clamp(10px, 2.2cqw, 14px);
+  }
+
+  .tc-size-btn {
+    padding: 0.22em 0.7em;
+  }
+
+  .hint {
+    font-size: clamp(8px, 1.6cqw, 11px);
+  }
 }
 
 /* ---- バグ報告・フィードバックモーダル ---- */
