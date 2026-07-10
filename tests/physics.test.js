@@ -385,8 +385,8 @@ describe('physics.js - マリオ物理演算の検証', () => {
       shell.h = 20;
       shell.vx = 0;
       level.enemies = [shell];
-      // プレイヤーが左から接触
-      player.x = 44;
+      // プレイヤーが左から接触 (横方向は互いに4px内側が判定なので深めに重ねる)
+      player.x = 48;
       player.y = 8 * TILE - player.h;
       player.vy = 0;
 

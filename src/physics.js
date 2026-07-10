@@ -17,7 +17,7 @@ export const G_FALL = 0.56;      // 落下時重力 (上昇の2倍)
 export const JUMP_V = -6.7;      // 初速 -√(2αγ)
 export const JUMP_V_DASH = -7.5; // 走行時の強化ジャンプ初速 (SMB準拠: 速度でジャンプ力が伸びる)
 export const STOMP_BOUNCE_V = -4.5; // 踏みつけの小バウンド初速 (ジャンプ入力なしの場合)
-export const STOMP_JUMP_V = -7.5;   // 踏む瞬間のタイミング押しで出る大ジャンプ初速 (SMB準拠: 通常ジャンプ相当 ≈100px)
+export const STOMP_JUMP_V = -8.0;   // 踏む瞬間のタイミング押しで出る大ジャンプ初速 (通常ジャンプより一回り高い ≈114px)
 export const STOMP_JUMP_GRACE_FRAMES = 6; // 踏んだ後もジャンプ押下を大ジャンプとして受け付ける猶予フレーム
 export const DASH_JUMP_SPEED = 3.5; // この水平速度以上で強化ジャンプが発動
 export const MAX_RISE_FRAMES = 24;
@@ -206,12 +206,6 @@ export function updatePhysics(player, input, level) {
       player.vx = 0;
     }
   }
-  // カメラ左端より左へは戻れない
-  if (player.x < level.cameraX) {
-    player.x = level.cameraX;
-    if (player.vx < 0) player.vx = 0;
-  }
-
   // ---------- Y軸更新 → 衝突解決 ----------
   player.y += player.vy;
   {
@@ -361,11 +355,22 @@ export function updatePhysics(player, input, level) {
       }
     }
 
+    // 踏みつけ・蹴り直後の接触猶予 (跳ね返り中の再ヒットによる自傷を防ぐ)
+    if (e.touchCooldown > 0) {
+      e.touchCooldown--;
+      continue;
+    }
+
     // プレイヤーとの衝突判定
-    if (player.x + player.w > e.x && player.x < e.x + e.w &&
-        player.y + player.h > e.y && player.y < e.y + e.h) {
+    // SMB準拠で見た目より甘め: 横方向は互いに数px食い込んで初めて接触扱い
+    const HIT_MARGIN_X = 4;
+    const HIT_MARGIN_TOP = 4;
+    if (player.x + player.w - HIT_MARGIN_X > e.x + HIT_MARGIN_X &&
+        player.x + HIT_MARGIN_X < e.x + e.w - HIT_MARGIN_X &&
+        player.y + player.h > e.y && player.y + HIT_MARGIN_TOP < e.y + e.h) {
       const isFalling = player.vy > 0;
-      const feetAboveMiddle = (player.y + player.h - player.vy) <= (e.y + e.h / 2);
+      // 落下中なら足が敵の2/3の高さより上にあれば踏みつけ成立 (SMB準拠でプレイヤー有利に解決)
+      const feetAboveMiddle = (player.y + player.h - player.vy) <= (e.y + e.h * 0.66);
       const kickDir = (player.x + player.w / 2) < (e.x + e.w / 2) ? 1 : -1;
 
       if (isFalling && feetAboveMiddle) {
@@ -416,12 +421,14 @@ export function updatePhysics(player, input, level) {
           player.stompGraceFrames = STOMP_JUMP_GRACE_FRAMES;
         }
         player.onGround = false;
+        e.touchCooldown = 10; // 跳ね返り中に再接触してダメージを受けないようにする
         events.stomped = true;
       } else if (type === 'koopa' && e.state === 'shell') {
         // 静止甲羅に横から触れると蹴り出す (ダメージなし)
         e.state = 'slide';
         e.shellTimer = 0;
         e.vx = kickDir * SHELL_SPEED;
+        e.touchCooldown = 12; // 蹴った直後の甲羅に轢かれないようにする
         events.kicked = true;
       } else if (!(player.invincible > 0)) {
         events.spike = true; // 被ダメージ (スーパー時は縮小、スモール時はミス)
@@ -497,9 +504,13 @@ export function updatePhysics(player, input, level) {
       level.setTile(tx, ty, '.');
       events.coins.push({ tx, ty });
     } else if (ch === 'H') {
-      // トゲはタイル下半分のみ危険域
-      const spikeTop = ty * TILE + TILE * 0.4;
-      if (player.y + player.h > spikeTop && !(player.invincible > 0)) events.spike = true;
+      // トゲは下半分×横方向5px内側のみ危険域 (かすっただけでは死なない)
+      const spikeTop = ty * TILE + TILE * 0.5;
+      const sx0 = tx * TILE + 5;
+      const sx1 = (tx + 1) * TILE - 5;
+      if (player.y + player.h > spikeTop &&
+          player.x + player.w > sx0 && player.x < sx1 &&
+          !(player.invincible > 0)) events.spike = true;
     } else if (ch === 'G' || ch === 'g') {
       events.goal = true;
     }

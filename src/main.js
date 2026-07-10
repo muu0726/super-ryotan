@@ -328,9 +328,12 @@ function updateStep() {
       startClear();
     }
 
-    // カメラ: プレイヤーが画面の1/3を超えたら右スクロール。左には戻らない
-    const target = player.x - VIEW_W / 3;
-    if (target > camX) camX = target;
+    // カメラ: 画面の1/3より右へ出たら右スクロール、1/4より左へ戻ったら左スクロール
+    if (player.x - camX > VIEW_W / 3) {
+      camX = player.x - VIEW_W / 3;
+    } else if (player.x - camX < VIEW_W / 4) {
+      camX = player.x - VIEW_W / 4;
+    }
     camX = Math.min(camX, level.pixelWidth - VIEW_W);
     camX = Math.max(camX, 0);
 
