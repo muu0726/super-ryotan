@@ -96,6 +96,47 @@ describe('level.js - ステージデータのロードとタイム記録', () =>
     });
   });
 
+  describe('1.5 中間チェックポイントと10コインブロック', () => {
+    it('EX以外の全ステージに中間チェックポイントが自動配置されること', () => {
+      for (let i = 0; i < LEVEL_COUNT - 1; i++) {
+        const lvl = new Level(i);
+        expect(lvl.checkpointX, `stage ${i + 1} に配置されていない`).toBeDefined();
+        // 旗の足元が足場で、上2タイルが空間であること
+        const footing = lvl.grid[lvl.checkpointTy][lvl.checkpointX];
+        expect(['#', '=', 'B', 'U', 'T']).toContain(footing);
+        expect(lvl.grid[lvl.checkpointTy - 1][lvl.checkpointX]).toBe('.');
+        expect(lvl.grid[lvl.checkpointTy - 2][lvl.checkpointX]).toBe('.');
+      }
+    });
+
+    it('EXステージにはチェックポイントが配置されないこと (一発勝負)', () => {
+      const ex = new Level(LEVEL_COUNT - 1);
+      expect(ex.checkpointX).toBeUndefined();
+    });
+
+    it('T (10コインブロック) が残数10で登録され、takeBlockCoin で減っていくこと', () => {
+      const lvl = new Level(1); // Stage 2 に T がある
+      expect(lvl.blockCoins.size).toBeGreaterThan(0);
+      const key = [...lvl.blockCoins.keys()][0];
+      const [tx, ty] = key.split(',').map(Number);
+      expect(lvl.blockCoins.get(key)).toBe(10);
+      for (let left = 9; left >= 0; left--) {
+        expect(lvl.takeBlockCoin(tx, ty)).toBe(left);
+      }
+    });
+
+    it('X (隠しブロック) がグリッドに残ること (ロード時に消えない)', () => {
+      const lvl = new Level(0); // Stage 1 に X がある
+      let found = 0;
+      for (let y = 0; y < lvl.height; y++) {
+        for (let x = 0; x < lvl.width; x++) {
+          if (lvl.grid[y][x] === 'X') found++;
+        }
+      }
+      expect(found).toBeGreaterThan(0);
+    });
+  });
+
   describe('2. セーブデータとベストタイム管理', () => {
     it('ステージの進捗状況を正しく localStorage にロード・セーブできること', () => {
       expect(loadProgress()).toBe(1); // 初期状態はステージ1

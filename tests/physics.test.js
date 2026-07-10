@@ -460,6 +460,221 @@ describe('physics.js - マリオ物理演算の検証', () => {
     });
   });
 
+  describe('9. 空中の慣性 (SMB準拠)', () => {
+    const airLevel = () => ({ ...level, enemies: [], tileAt: () => '.' });
+
+    it('空中では入力なしでも水平速度が保持されること (空中摩擦なし)', () => {
+      const lvl = airLevel();
+      player.onGround = false;
+      player.vx = 3.0;
+      updatePhysics(player, input, lvl);
+      expect(player.vx).toBe(3.0);
+    });
+
+    it('空中の逆方向入力はブレーキ (D_X) ではなく通常加速度 (A_X) で効くこと', () => {
+      const lvl = airLevel();
+      player.onGround = false;
+      player.vx = 3.0;
+      input.left = true;
+      updatePhysics(player, input, lvl);
+      expect(player.vx).toBeCloseTo(3.0 - 0.1, 5); // A_X = 0.1
+      expect(player.skidding).toBe(false);
+    });
+
+    it('空中でダッシュを解除しても超過速度が維持されること', () => {
+      const lvl = airLevel();
+      player.onGround = false;
+      player.vx = V_DASH_MAX; // ダッシュジャンプ中にダッシュボタンを離した状態
+      input.right = true;
+      updatePhysics(player, input, lvl);
+      expect(player.vx).toBe(V_DASH_MAX);
+    });
+
+    it('接地中は従来どおり摩擦で減速すること', () => {
+      player.onGround = true;
+      player.vx = 2.0;
+      updatePhysics(player, input, level);
+      expect(player.vx).toBe(2.0 - 0.15);
+    });
+  });
+
+  describe('10. ブロックの叩き分け (レンガ破壊・10コイン・隠しブロック)', () => {
+    // タイルを自由に配置できる可変レベルモック (ty >= 8 は地面)
+    const gridLevel = (tiles) => {
+      const map = new Map(Object.entries(tiles));
+      return {
+        width: 20, height: 12, cameraX: 0, enemies: [], items: [],
+        tileAt: (tx, ty) => (ty >= 8 ? '#' : map.get(`${tx},${ty}`) || '.'),
+        setTile: (tx, ty, ch) => map.set(`${tx},${ty}`, ch),
+        blockCoins: new Map(),
+        takeBlockCoin(tx, ty) {
+          const key = `${tx},${ty}`;
+          const left = (this.blockCoins.get(key) ?? 10) - 1;
+          this.blockCoins.set(key, left);
+          return left;
+        },
+        pixelWidth: 640, pixelHeight: 384,
+        map,
+      };
+    };
+
+    // ブロックの真下から頭で叩く初期配置 (block bottom = 6*32 = 192)
+    const setupHeadBonk = () => {
+      player.x = 32;
+      player.y = 193;
+      player.onGround = false;
+      player.vy = -4.0;
+    };
+
+    it('スーパー状態でレンガを下から叩くと破壊されること (SMB準拠)', () => {
+      const lvl = gridLevel({ '1,5': 'B' });
+      player.power = 'super';
+      setupHeadBonk();
+      const events = updatePhysics(player, input, lvl);
+      expect(events.bumped[0].kind).toBe('break');
+      expect(lvl.tileAt(1, 5)).toBe('.');
+    });
+
+    it('スモール状態ではレンガは壊れず bump になること', () => {
+      const lvl = gridLevel({ '1,5': 'B' });
+      player.power = 'small';
+      setupHeadBonk();
+      const events = updatePhysics(player, input, lvl);
+      expect(events.bumped[0].kind).toBe('bump');
+      expect(lvl.tileAt(1, 5)).toBe('B');
+    });
+
+    it('10コインブロックは叩くたびにコインが出て、尽きると空ブロックになること', () => {
+      const lvl = gridLevel({ '1,5': 'T' });
+      for (let hitCount = 1; hitCount <= 10; hitCount++) {
+        setupHeadBonk();
+        const events = updatePhysics(player, input, lvl);
+        expect(events.bumped[0].kind).toBe('item');
+      }
+      expect(lvl.tileAt(1, 5)).toBe('U'); // 10回で使用済み化
+    });
+
+    it('隠しブロックは上昇中に下から叩いた時だけ出現してコインが出ること', () => {
+      const lvl = gridLevel({ '1,5': 'X' });
+      setupHeadBonk();
+      const events = updatePhysics(player, input, lvl);
+      expect(events.bumped[0].kind).toBe('item');
+      expect(lvl.tileAt(1, 5)).toBe('U');
+      expect(player.vy).toBe(0); // 頭が止められる
+    });
+
+    it('隠しブロックは既にタイル内にいる場合 (横からの進入) は反応しないこと', () => {
+      const lvl = gridLevel({ '1,5': 'X' });
+      player.x = 32;
+      player.y = 180; // 頭が既にタイル内
+      player.onGround = false;
+      player.vy = -1.0;
+      const events = updatePhysics(player, input, lvl);
+      expect(events.bumped.length).toBe(0);
+      expect(lvl.tileAt(1, 5)).toBe('X');
+    });
+
+    it('落下中は隠しブロックをすり抜けること', () => {
+      const lvl = gridLevel({ '1,5': 'X' });
+      player.x = 32;
+      player.y = 130;
+      player.onGround = false;
+      player.vy = 5.0;
+      updatePhysics(player, input, lvl);
+      expect(lvl.tileAt(1, 5)).toBe('X'); // 変化なし
+      expect(player.vy).toBeGreaterThan(0); // 止められていない
+    });
+
+    it('ブロックを下から叩くと直上に乗っている敵が撃破されること (SMB準拠)', () => {
+      const lvl = gridLevel({ '1,5': 'B' });
+      const enemy = {
+        x: 36, y: 5 * TILE - 24, w: 24, h: 24, // ブロックの上に接地
+        vx: -0.7, vy: 0, onGround: true,
+        dead: false, deadTimer: 0, animTime: 0,
+      };
+      lvl.enemies = [enemy];
+      setupHeadBonk();
+      const events = updatePhysics(player, input, lvl);
+      expect(enemy.dead).toBe(true);
+      expect(events.bumpKills.length).toBe(1);
+    });
+  });
+
+  describe('11. 連鎖ボーナス・甲羅の相殺', () => {
+    it('着地せず連続で踏むと stompChain が増えていくこと', () => {
+      const airLevel = { ...level, tileAt: () => '.' };
+      const makeWalker = (x, y) => ({
+        x, y, w: 24, h: 24, vx: -0.7, vy: 0,
+        dead: false, deadTimer: 0, animTime: 0,
+      });
+      const e1 = makeWalker(32, 100);
+      const e2 = makeWalker(200, 100);
+      airLevel.enemies = [e1, e2];
+
+      // 1体目を空中で踏む
+      player.onGround = false;
+      player.vy = 2.0;
+      player.x = e1.x;
+      player.y = e1.y - player.h + 1;
+      const ev1 = updatePhysics(player, input, airLevel);
+      expect(ev1.stompChain).toBe(1);
+
+      // 着地せずに2体目を踏む
+      player.vy = 2.0;
+      player.x = e2.x;
+      player.y = e2.y - player.h + 1;
+      const ev2 = updatePhysics(player, input, airLevel);
+      expect(ev2.stompChain).toBe(2);
+    });
+
+    it('着地すると stompChain がリセットされること', () => {
+      player.onGround = true;
+      player.stompChain = 3;
+      updatePhysics(player, input, level);
+      expect(player.stompChain).toBe(0);
+    });
+
+    it('滑走中の甲羅同士がぶつかると両方消滅すること (SMB準拠)', () => {
+      const makeShell = (x, vx) => ({
+        type: 'koopa', state: 'slide', shellTimer: 0,
+        x, y: 8 * TILE - 20, w: 24, h: 20,
+        vx, vy: 0, onGround: true, dead: false, deadTimer: 0, animTime: 0,
+      });
+      const s1 = makeShell(50, SHELL_SPEED);
+      const s2 = makeShell(72, -SHELL_SPEED);
+      level.enemies = [s1, s2];
+      player.x = 300;
+      player.y = 0;
+
+      const events = updatePhysics(player, input, level);
+
+      expect(s1.dead).toBe(true);
+      expect(s2.dead).toBe(true);
+      expect(events.shellKills.length).toBe(2);
+    });
+
+    it('甲羅の連鎖撃破に増加ボーナスが付くこと', () => {
+      const shell = {
+        type: 'koopa', state: 'slide', shellTimer: 0,
+        x: 50, y: 8 * TILE - 20, w: 24, h: 20,
+        vx: SHELL_SPEED, vy: 0, onGround: true, dead: false, deadTimer: 0, animTime: 0,
+      };
+      shell.killCount = 1; // 既に1体倒している
+      const victim = {
+        x: 60, y: 8 * TILE - 24, w: 24, h: 24, vx: -0.7, vy: 0,
+        onGround: true, dead: false, deadTimer: 0, animTime: 0,
+      };
+      level.enemies = [shell, victim];
+      player.x = 300;
+      player.y = 0;
+
+      const events = updatePhysics(player, input, level);
+
+      expect(victim.dead).toBe(true);
+      expect(events.shellKills[0].bonus).toBe(2); // 2体目は +2
+    });
+  });
+
   describe('5. すり抜け床 (=)', () => {
     const platLevel = () => ({
       ...level,

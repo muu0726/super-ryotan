@@ -36,7 +36,7 @@ export const ITEM_SPEED = 1.4;           // きのこの自走速度
 const INSET = 0.2;               // 継ぎ目スタック対策のコライダー縮小量
 
 function isSolid(ch) {
-  return ch === '#' || ch === 'B' || ch === '?' || ch === 'U' || ch === 'M';
+  return ch === '#' || ch === 'B' || ch === '?' || ch === 'U' || ch === 'M' || ch === 'T';
 }
 
 // '=' は一方通行のすり抜け床: 上からのみ着地でき、下・横からは通り抜ける
@@ -61,6 +61,29 @@ function oneWayLanding(level, body) {
     if (isOneWay(level.tileAt(tx, ty))) return { tx, ty };
   }
   return null;
+}
+
+/**
+ * 隠しブロック (X) への下からの衝突判定。
+ * 上昇中に頭がタイル下面をまたいだフレームのみ成立する (横からの進入では反応しない)。
+ */
+function hiddenBlockHit(level, body) {
+  const top = body.y;
+  const prevTop = top - body.vy; // vy < 0 なので前フレームの頭は下にある
+  const ty = Math.floor((top + INSET) / TILE);
+  const tileBottom = (ty + 1) * TILE;
+  if (prevTop < tileBottom - INSET * 2) return null; // 既に食い込み済み → 横から進入
+  const x0 = Math.floor((body.x + INSET) / TILE);
+  const x1 = Math.floor((body.x + body.w - INSET) / TILE);
+  const cx = Math.floor((body.x + body.w / 2) / TILE);
+  let best = null;
+  for (let tx = x0; tx <= x1; tx++) {
+    if (level.tileAt(tx, ty) === 'X' &&
+        (best === null || Math.abs(tx - cx) < Math.abs(best - cx))) {
+      best = tx;
+    }
+  }
+  return best === null ? null : { tx: best, ty };
 }
 
 // すり抜け床の上に立っているか (接地維持の確認用)
@@ -92,7 +115,7 @@ function forEachOverlapTile(level, x, y, w, h, hit) {
   }
 }
 
-function collidesSolid(level, x, y, w, h) {
+export function collidesSolid(level, x, y, w, h) {
   let found = null;
   forEachOverlapTile(level, x, y, w, h, (tx, ty, ch) => {
     if (isSolid(ch)) {
@@ -115,31 +138,37 @@ export function updatePhysics(player, input, level) {
   if (player.invincible > 0) player.invincible--;
 
   // ---------- 水平方向 ----------
+  // SMB準拠: 摩擦・急ブレーキが効くのは接地中のみ。
+  // 空中では入力なしで水平速度を保持し、切り返しも通常加速度でしか効かない。
   const vmax = input.dash ? V_DASH_MAX : V_WALK_MAX;
   const dir = (input.right ? 1 : 0) - (input.left ? 1 : 0);
 
   if (dir !== 0) {
     const movingOpposite = player.vx !== 0 && Math.sign(player.vx) !== dir;
     if (movingOpposite) {
-      // ブレーキ: 加速度の3倍で急減速 (スリップ状態)
-      player.vx += dir * D_X;
+      // 接地中はブレーキ (加速度の3倍で急減速・スリップ状態)、空中は通常加速度
+      player.vx += dir * (player.onGround ? D_X : A_X);
       player.skidding = player.onGround;
     } else {
-      player.vx += dir * A_X;
       player.skidding = false;
-    }
-    // 最大速度クランプ (ダッシュ解除時はなだらかに減速)
-    if (Math.abs(player.vx) > vmax) {
-      player.vx = Math.sign(player.vx) * Math.max(vmax, Math.abs(player.vx) - F_X);
+      if (Math.abs(player.vx) < vmax) {
+        player.vx += dir * A_X;
+        if (Math.abs(player.vx) > vmax) player.vx = dir * vmax;
+      } else if (player.onGround && Math.abs(player.vx) > vmax) {
+        // ダッシュ解除時のなだらかな減速は接地中のみ (空中は超過速度を維持)
+        player.vx = Math.sign(player.vx) * Math.max(vmax, Math.abs(player.vx) - F_X);
+      }
     }
     player.facing = dir;
   } else {
-    // 摩擦: スッと止まらず滑る
+    // 摩擦: スッと止まらず滑る (接地中のみ)
     player.skidding = false;
-    if (Math.abs(player.vx) <= F_X) {
-      player.vx = 0;
-    } else {
-      player.vx -= Math.sign(player.vx) * F_X;
+    if (player.onGround) {
+      if (Math.abs(player.vx) <= F_X) {
+        player.vx = 0;
+      } else {
+        player.vx -= Math.sign(player.vx) * F_X;
+      }
     }
   }
 
@@ -148,6 +177,7 @@ export function updatePhysics(player, input, level) {
   if (player.onGround) {
     player.coyoteFrames = COYOTE_FRAMES;
     player.stompGraceFrames = 0;
+    player.stompChain = 0; // 着地で踏みつけ連鎖はリセット
   } else {
     player.coyoteFrames = Math.max(0, (player.coyoteFrames || 0) - 1);
     player.stompGraceFrames = Math.max(0, (player.stompGraceFrames || 0) - 1);
@@ -236,8 +266,20 @@ export function updatePhysics(player, input, level) {
             level.setTile(tx, hit.ty, 'U');
             events.bumped.push({ tx, ty: hit.ty, kind: 'mushroom' });
             break;
+          } else if (tile === 'T') {
+            // 10コインブロック: 見た目はレンガ。叩くたびコインが出て、尽きると空ブロック化
+            const left = level.takeBlockCoin ? level.takeBlockCoin(tx, hit.ty) : 0;
+            if (left <= 0) level.setTile(tx, hit.ty, 'U');
+            events.bumped.push({ tx, ty: hit.ty, kind: 'item' });
+            break;
           } else if (tile === 'B') {
-            events.bumped.push({ tx, ty: hit.ty, kind: 'bump' });
+            if (player.power === 'super') {
+              // SMB準拠: スーパー時はレンガを破壊できる
+              level.setTile(tx, hit.ty, '.');
+              events.bumped.push({ tx, ty: hit.ty, kind: 'break' });
+            } else {
+              events.bumped.push({ tx, ty: hit.ty, kind: 'bump' });
+            }
             break;
           }
         }
@@ -253,6 +295,34 @@ export function updatePhysics(player, input, level) {
         player.jumping = false;
       } else {
         player.onGround = false;
+      }
+    } else if (player.vy < 0) {
+      // 隠しブロック (X): 上昇中に下から頭で叩いた時だけソリッド化してコインが出る
+      const hx = hiddenBlockHit(level, player);
+      if (hx) {
+        player.y = (hx.ty + 1) * TILE + INSET;
+        player.vy = 0;
+        player.jumping = false;
+        level.setTile(hx.tx, hx.ty, 'U');
+        events.bumped.push({ tx: hx.tx, ty: hx.ty, kind: 'item' });
+      }
+    }
+  }
+
+  // ---------- 叩いたブロックの直上にいる敵の撃破 (SMB準拠) ----------
+  for (const b of events.bumped) {
+    const bx0 = b.tx * TILE;
+    const topY = b.ty * TILE;
+    for (const e of level.enemies) {
+      if (e.dead || e.type === 'flyer') continue;
+      const feet = e.y + e.h;
+      if (feet >= topY - 6 && feet <= topY + 6 &&
+          e.x + e.w > bx0 + 2 && e.x < bx0 + TILE - 2) {
+        e.dead = true;
+        e.deadTimer = 30;
+        e.vx = 0;
+        events.bumpKills = events.bumpKills || [];
+        events.bumpKills.push({ x: e.x + e.w / 2, y: e.y + e.h / 2 });
       }
     }
   }
@@ -339,8 +409,8 @@ export function updatePhysics(player, input, level) {
         }
       }
 
-      // 滑走中の甲羅は他の敵を連鎖撃破する
-      if (type === 'koopa' && e.state === 'slide') {
+      // 滑走中の甲羅は他の敵を連鎖撃破する (撃破数に応じてボーナスコインが増える)
+      if (type === 'koopa' && e.state === 'slide' && !e.dead) {
         for (const other of level.enemies) {
           if (other === e || other.dead) continue;
           if (other.x + other.w > e.x && other.x < e.x + e.w &&
@@ -349,7 +419,20 @@ export function updatePhysics(player, input, level) {
             other.deadTimer = 30;
             other.vx = 0;
             events.shellKills = events.shellKills || [];
-            events.shellKills.push({ x: other.x + other.w / 2, y: other.y + other.h / 2 });
+            e.killCount = (e.killCount || 0) + 1;
+            events.shellKills.push({
+              x: other.x + other.w / 2,
+              y: other.y + other.h / 2,
+              bonus: Math.min(2 ** (e.killCount - 1), 8), // +1, +2, +4, +8 (上限)
+            });
+            if (other.type === 'koopa' && other.state === 'slide') {
+              // 滑走甲羅同士は相殺して両方消滅する (SMB準拠)
+              e.dead = true;
+              e.deadTimer = 30;
+              e.vx = 0;
+              events.shellKills.push({ x: e.x + e.w / 2, y: e.y + e.h / 2, bonus: 0 });
+              break;
+            }
           }
         }
       }
@@ -423,6 +506,9 @@ export function updatePhysics(player, input, level) {
         player.onGround = false;
         e.touchCooldown = 10; // 跳ね返り中に再接触してダメージを受けないようにする
         events.stomped = true;
+        // 着地せずに連続で踏むと連鎖ボーナス (SMBの連続踏みスコアのコイン換算)
+        player.stompChain = (player.stompChain || 0) + 1;
+        events.stompChain = player.stompChain;
       } else if (type === 'koopa' && e.state === 'shell') {
         // 静止甲羅に横から触れると蹴り出す (ダメージなし)
         e.state = 'slide';

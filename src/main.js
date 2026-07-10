@@ -5,12 +5,14 @@
 import './style.css';
 import { initPWA } from './pwa.js';
 import { initInput, input } from './input.js';
-import { TILE, G_FALL, updatePhysics, V_WALK_MAX } from './physics.js';
-import { Level, LEVEL_COUNT, LEVEL_NAMES, stageLabel, loadProgress, saveProgress, loadBestTime, saveBestTime, loadTotalCoins, saveTotalCoins } from './level.js';
+import { TILE, G_FALL, updatePhysics, V_WALK_MAX, collidesSolid, SHELL_REVIVE_FRAMES } from './physics.js';
+import { Level, LEVEL_COUNT, LEVEL_NAMES, EX_STAGE, stageLabel, loadProgress, saveProgress, loadBestTime, saveBestTime, loadTotalCoins, saveTotalCoins } from './level.js';
+import { HAIR_COLORS, loadOwnedItems, loadSelectedHair, selectHair, buyHairColor } from './shop.js';
 import {
   unlockAudio, sfxJump, sfxCoin, sfxBump, sfxBlock,
   sfxDeath, sfxClear, sfxSelect, sfxKick, sfxBreak,
-  sfxFlag, sfxFirework, sfxPowerup, sfxShrink
+  sfxFlag, sfxFirework, sfxPowerup, sfxShrink,
+  sfxCheckpoint, startBgm, stopBgm
 } from './audio.js';
 
 const VIEW_W = 800;
@@ -33,6 +35,73 @@ const sprite = new Image();
 let spriteReady = false;
 sprite.onload = () => { spriteReady = true; };
 sprite.src = import.meta.env.BASE_URL + encodeURIComponent('character.png');
+
+// ---- 髪色の付け替え (ショップ) ----
+// 金髪部分 (色相28〜55°・彩度0.3以上。肌は15〜22°、ブーツは16〜24°なので重ならない)
+// のピクセルだけ色相を差し替えたスプライトを生成してキャッシュする
+let selectedHair = loadSelectedHair();
+const spriteVariants = new Map(); // hairId -> canvas
+
+function rgbToHsl(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  if (max === min) return [0, 0, l];
+  const d = max - min;
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  let h;
+  if (max === r) h = (g - b) / d + (g < b ? 6 : 0);
+  else if (max === g) h = (b - r) / d + 2;
+  else h = (r - g) / d + 4;
+  return [h * 60, s, l];
+}
+
+function hslToRgb(h, s, l) {
+  h = ((h % 360) + 360) % 360;
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = l - c / 2;
+  let r, g, b;
+  if (h < 60) [r, g, b] = [c, x, 0];
+  else if (h < 120) [r, g, b] = [x, c, 0];
+  else if (h < 180) [r, g, b] = [0, c, x];
+  else if (h < 240) [r, g, b] = [0, x, c];
+  else if (h < 300) [r, g, b] = [x, 0, c];
+  else [r, g, b] = [c, 0, x];
+  return [Math.round((r + m) * 255), Math.round((g + m) * 255), Math.round((b + m) * 255)];
+}
+
+function buildHairVariant(hue) {
+  const cv = document.createElement('canvas');
+  cv.width = sprite.naturalWidth;
+  cv.height = sprite.naturalHeight;
+  const c = cv.getContext('2d');
+  c.drawImage(sprite, 0, 0);
+  const imgData = c.getImageData(0, 0, cv.width, cv.height);
+  const d = imgData.data;
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i + 3] < 10) continue;
+    const [h, s, l] = rgbToHsl(d[i], d[i + 1], d[i + 2]);
+    if (h >= 28 && h <= 55 && s >= 0.28 && l >= 0.2 && l <= 0.85) {
+      const [r, g, b] = hslToRgb(hue, s, l);
+      d[i] = r;
+      d[i + 1] = g;
+      d[i + 2] = b;
+    }
+  }
+  c.putImageData(imgData, 0, 0);
+  return cv;
+}
+
+function getPlayerSprite() {
+  if (!spriteReady) return null;
+  const color = HAIR_COLORS.find((c) => c.id === selectedHair);
+  if (!color || color.hue === null) return sprite;
+  if (!spriteVariants.has(color.id)) {
+    spriteVariants.set(color.id, buildHairVariant(color.hue));
+  }
+  return spriteVariants.get(color.id);
+}
 
 
 // ---- プレイヤー ----
@@ -77,6 +146,10 @@ let elapsed = 0; // 描画演出用フレームカウンタ
 let playTimer = 0; // プレイ時間 (フレーム)
 let newRecord = false;
 let bestTimeForStage = null;
+// 中間チェックポイント
+let checkpointReached = false; // 今回のライフで旗に到達済みか
+let checkpointCoins = 0;       // 旗到達時点のコイン数 (リスポーン時に復元)
+let usedCheckpoint = false;    // チェックポイントから再開したか (タイム記録の対象外になる)
 
 const bumps = new Map(); // "tx,ty" -> 経過フレーム (ブロック叩きアニメ)
 let particles = []; // コインポップ演出
@@ -101,8 +174,41 @@ function loadStage(n) {
   playTimer = 0;
   newRecord = false;
   bestTimeForStage = loadBestTime(n);
+  checkpointReached = false;
+  checkpointCoins = 0;
+  usedCheckpoint = false;
   respawn();
   mode = 'play';
+  startBgm(bgmThemeFor(n));
+}
+
+// ステージ番号 → BGMテーマ
+function bgmThemeFor(n) {
+  if (n === 5 || n === 15) return 'underground';
+  if (n === 3 || n === 9 || n === 12 || n === 16 || n === 18) return 'sky';
+  if (n === 10 || n === 20 || n === EX_STAGE) return 'final';
+  return 'overworld';
+}
+
+// ミス後の再開。チェックポイント到達済みならそこから再開する
+// (敵・ブロックは復活し、コインは旗到達時点まで戻る。タイム記録は対象外になる)
+function respawnAfterDeath() {
+  if (checkpointReached && level.checkpointX !== undefined) {
+    const cpX = level.checkpointX;
+    const cpTy = level.checkpointTy;
+    const keepCoins = checkpointCoins;
+    loadStage(stageNum);
+    checkpointReached = true;
+    usedCheckpoint = true;
+    checkpointCoins = keepCoins;
+    coins = keepCoins;
+    player.x = cpX * TILE + (TILE - player.w) / 2;
+    player.y = cpTy * TILE - player.h - 0.2;
+    camX = Math.max(0, Math.min(player.x - VIEW_W / 3, level.pixelWidth - VIEW_W));
+    level.cameraX = camX;
+  } else {
+    loadStage(stageNum);
+  }
 }
 
 function respawn() {
@@ -128,6 +234,7 @@ function startDeath() {
   mode = 'dying';
   player.deathVy = -7; // 小さく跳ね上がる
   player.deathRot = 0;
+  stopBgm();
   sfxDeath();
 }
 
@@ -136,6 +243,9 @@ function growPlayer() {
   player.power = 'super';
   player.y -= PLAYER_H_SUPER - PLAYER_H;
   player.h = PLAYER_H_SUPER;
+  // 低い天井の下で取得した場合は頭を天井の下へ押し戻す (めり込みによる吹き飛び防止)
+  const hit = collidesSolid(level, player.x, player.y, player.w, player.h);
+  if (hit) player.y = (hit.ty + 1) * TILE + 0.25;
   sfxPowerup();
   particles.push({
     x: player.x + player.w / 2, y: player.y - 10,
@@ -173,8 +283,10 @@ function startClear() {
   clearBonus = grabRatio > 0.8 ? 10 : grabRatio > 0.6 ? 5 : grabRatio > 0.4 ? 3 : grabRatio > 0.2 ? 2 : 1;
 
   const clearTime = playTimer / 60;
-  newRecord = saveBestTime(stageNum, clearTime);
+  // チェックポイントから再開したクリアはタイム記録の対象外
+  newRecord = usedCheckpoint ? false : saveBestTime(stageNum, clearTime);
   saveProgress(stageNum + 1);
+  stopBgm();
   sfxFlag();
 }
 
@@ -279,10 +391,50 @@ function updateStep() {
           vx: 0, vy: 0,
           state: 'rising',
         });
+      } else if (b.kind === 'break') {
+        // スーパー時のレンガ破壊: 破片が四方に飛び散る
+        sfxBreak();
+        for (const [dx, dy] of [[-1, -3.4], [1, -3.4], [-1, -1.8], [1, -1.8]]) {
+          particles.push({
+            x: b.tx * TILE + TILE / 2 + dx * 7,
+            y: b.ty * TILE + TILE / 2,
+            vx: dx * (1.1 + Math.random() * 0.9),
+            vy: dy - Math.random(),
+            t: 0,
+            life: 44,
+            kind: 'debris',
+            rot: Math.random() * Math.PI,
+            rotV: 0.22 * dx,
+          });
+        }
       } else if (b.kind === 'bump') {
         bumps.set(`${b.tx},${b.ty}`, 0);
         sfxBump();
       }
+    }
+    // 下から叩いたブロックの上にいた敵の撃破
+    if (events.bumpKills) {
+      sfxKick();
+      for (const k of events.bumpKills) {
+        for (let i = 0; i < 6; i++) {
+          particles.push({
+            x: k.x, y: k.y,
+            vx: (i - 2.5) * 0.6,
+            vy: -1 - Math.random(),
+            t: 0, life: 24, kind: 'spark',
+          });
+        }
+      }
+    }
+    // 踏みつけ連鎖ボーナス (着地せず2体目以降: +1, +2, +4, 上限+8)
+    if (events.stompChain >= 2) {
+      const bonus = Math.min(2 ** (events.stompChain - 2), 8);
+      coins += bonus;
+      sfxCoin();
+      particles.push({
+        x: player.x + player.w / 2, y: player.y - 12,
+        vy: -0.6, t: 0, life: 45, kind: 'text', text: `コイン +${bonus}`,
+      });
     }
     if (events.powerup) {
       if (player.power === 'small') {
@@ -309,6 +461,14 @@ function updateStep() {
             t: 0, life: 24, kind: 'spark',
           });
         }
+        // 甲羅の連鎖撃破ボーナス (+1, +2, +4, 上限+8)
+        if (k.bonus) {
+          coins += k.bonus;
+          particles.push({
+            x: k.x, y: k.y - 16,
+            vy: -0.6, t: 0, life: 45, kind: 'text', text: `コイン +${k.bonus}`,
+          });
+        }
       }
     }
     for (const c of events.coins) {
@@ -319,6 +479,18 @@ function updateStep() {
         vy: -1.6, t: 0, life: 22, kind: 'spark',
       });
     }
+    // 中間チェックポイント: 旗の列を越えたら到達 (SMB準拠で高さは問わない)
+    if (!checkpointReached && level.checkpointX !== undefined && mode === 'play' &&
+        player.x + player.w / 2 >= level.checkpointX * TILE + TILE / 2) {
+      checkpointReached = true;
+      checkpointCoins = coins;
+      sfxCheckpoint();
+      particles.push({
+        x: level.checkpointX * TILE + TILE / 2, y: (level.checkpointTy - 2) * TILE - 8,
+        vy: -0.5, t: 0, life: 60, kind: 'text', text: 'チェックポイント!',
+      });
+    }
+
     if (events.fellOff) {
       startDeath(); // 落下は状態に関わらずミス
     } else if (events.spike) {
@@ -344,7 +516,7 @@ function updateStep() {
     player.y += player.deathVy;
     player.deathRot += 0.12;
     if (player.y > level.pixelHeight + 300) {
-      loadStage(stageNum); // 同じステージをやり直し
+      respawnAfterDeath(); // チェックポイント到達済みならそこから、未到達なら最初から
     }
   } else if (mode === 'clear') {
     clearTimer++;
@@ -511,6 +683,7 @@ function drawTile(ch, tx, ty, cam) {
       }
       break;
     }
+    case 'T': // 10コインブロックはSMB準拠でレンガと見分けがつかない
     case 'B': {
       ctx.fillStyle = '#5a3d4a';
       ctx.fillRect(x, y, TILE, TILE);
@@ -613,6 +786,31 @@ function drawGoal(cam) {
   ctx.fillRect(x - 12, baseY - 8, 24, 8);
 }
 
+// 中間チェックポイントの旗 (未到達: グレー / 到達済み: ゴールド)
+function drawCheckpoint(cam) {
+  if (level.checkpointX === undefined) return;
+  const x = level.checkpointX * TILE - cam + TILE / 2;
+  if (x < -60 || x > VIEW_W + 60) return;
+  const baseY = level.checkpointTy * TILE;
+  const topY = baseY - TILE * 2;
+  const color = checkpointReached ? '#ffd23f' : '#8b93b8';
+
+  ctx.fillStyle = color;
+  ctx.fillRect(x - 1.5, topY, 3, baseY - topY);
+  ctx.beginPath();
+  ctx.arc(x, topY, 4, 0, Math.PI * 2);
+  ctx.fill();
+
+  const wave = Math.sin(elapsed * 0.12) * 2;
+  ctx.fillStyle = checkpointReached ? '#ffd23f' : 'rgba(139, 147, 184, 0.7)';
+  ctx.beginPath();
+  ctx.moveTo(x + 1.5, topY + 2);
+  ctx.lineTo(x + 20 + wave, topY + 9);
+  ctx.lineTo(x + 1.5, topY + 16);
+  ctx.closePath();
+  ctx.fill();
+}
+
 function drawPlayer(rx, ry) {
   let frame;
   if (mode === 'dying') {
@@ -644,8 +842,9 @@ function drawPlayer(rx, ry) {
     ctx.scale(-1, 1);
   }
 
-  if (spriteReady) {
-    ctx.drawImage(sprite, frame.x, frame.y, frame.w, frame.h, -dw / 2, -dh / 2, dw, dh);
+  const spr = getPlayerSprite();
+  if (spr) {
+    ctx.drawImage(spr, frame.x, frame.y, frame.w, frame.h, -dw / 2, -dh / 2, dw, dh);
   } else {
     // 画像読込前のフォールバック
     ctx.fillStyle = '#ff5c7a';
@@ -674,6 +873,17 @@ function drawParticles(cam) {
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(p.text, p.x - cam, p.y);
+    } else if (p.kind === 'debris') {
+      // レンガ破片: 回転しながら落ちる小さな塊
+      ctx.save();
+      ctx.translate(p.x - cam, p.y);
+      ctx.rotate(p.rot || 0);
+      ctx.fillStyle = '#5a3d4a';
+      ctx.fillRect(-5, -5, 10, 10);
+      ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(-5, -5, 10, 10);
+      ctx.restore();
     } else {
       ctx.fillStyle = '#fff6c9';
       ctx.beginPath();
@@ -781,6 +991,11 @@ function drawKoopa(e) {
   ctx.beginPath();
   ctx.ellipse(0, e.h / 2 - 1, e.w / 2 - 2, 2, 0, 0, Math.PI * 2);
   ctx.fill();
+
+  // 歩行復帰の予兆: 残り60フレームを切った甲羅は小刻みに震える (SMB準拠)
+  if (e.state === 'shell' && e.shellTimer > SHELL_REVIVE_FRAMES - 60) {
+    ctx.translate(Math.sin(e.animTime * 0.9) * 1.5, 0);
+  }
 
   ctx.save();
   if (e.state === 'slide') {
@@ -928,6 +1143,7 @@ function draw(renderX, renderY, renderCam) {
     }
   }
   drawGoal(renderCam);
+  drawCheckpoint(renderCam);
   drawParticles(renderCam);
 
   // 敵キャラの描画
@@ -1004,7 +1220,7 @@ function gameLoop(timestamp) {
 // ============================================
 // UI (タイトル / ステージ選択 / クリア / ポーズ)
 // ============================================
-const screens = ['title-screen', 'select-screen', 'clear-screen', 'allclear-screen', 'pause-screen'];
+const screens = ['title-screen', 'select-screen', 'shop-screen', 'clear-screen', 'allclear-screen', 'pause-screen'];
 const pauseBtn = document.getElementById('btn-pause');
 const touchUi = document.getElementById('touch-ui');
 
@@ -1037,12 +1253,14 @@ function applyTcSize(size) {
 function pauseGame() {
   if (mode !== 'play' || paused) return;
   paused = true;
+  stopBgm();
   showScreen('pause-screen');
 }
 
 function resumeGame() {
   if (!paused) return;
   paused = false;
+  startBgm(bgmThemeFor(stageNum));
   hideScreens();
 }
 
@@ -1050,6 +1268,7 @@ function resumeGame() {
 function quitStage(screenId) {
   paused = false;
   mode = 'menu';
+  stopBgm();
   showScreen(screenId);
 }
 
@@ -1092,6 +1311,156 @@ function buildStageGrid() {
   }
 }
 
+// ---- ショップ (髪色の購入・付け替え) ----
+function renderShop() {
+  document.getElementById('shop-coins-value').textContent = loadTotalCoins();
+  const grid = document.getElementById('shop-grid');
+  const owned = loadOwnedItems();
+  const total = loadTotalCoins();
+  grid.innerHTML = '';
+  for (const c of HAIR_COLORS) {
+    const isOwned = owned.includes(c.id);
+    const isSelected = selectedHair === c.id;
+    const btn = document.createElement('button');
+    btn.className = 'shop-item' +
+      (isSelected ? ' selected' : '') +
+      (!isOwned ? ' locked' : '') +
+      (!isOwned && total < c.price ? ' unaffordable' : '');
+    btn.innerHTML = `
+      <span class="swatch" style="background:${c.swatch}"></span>
+      <span class="item-name">${c.name}</span>
+      <span class="item-state">${isSelected ? 'そうびちゅう' : isOwned ? 'えらぶ' : `🪙 ${c.price}`}</span>`;
+    btn.addEventListener('click', () => {
+      unlockAudio();
+      if (loadOwnedItems().includes(c.id)) {
+        if (selectHair(c.id)) {
+          selectedHair = c.id;
+          sfxSelect();
+        }
+      } else {
+        const res = buyHairColor(c.id);
+        if (res.ok) {
+          selectHair(c.id);
+          selectedHair = c.id;
+          sfxPowerup(); // 購入成功ファンファーレ
+        } else {
+          sfxBump(); // コイン不足
+        }
+      }
+      renderShop();
+    });
+    grid.appendChild(btn);
+  }
+}
+
+// ---- バグ報告・フィードバック送信 (Formspree連携) ----
+const FEEDBACK_ENDPOINT = 'https://formspree.io/f/mjgqqzdd';
+
+// セーブ状態や端末情報を「システム・環境情報」として自動収集する
+function collectDebugInfo() {
+  let unlockedStage = '1';
+  let totalCoins = '0';
+  try {
+    unlockedStage = localStorage.getItem('super-ryotan-progress-v1') || '1';
+    totalCoins = localStorage.getItem('super-ryotan-total-coins-v1') || '0';
+  } catch {
+    // プライベートモード等で localStorage 不可でも送信自体は続行
+  }
+  return {
+    version: document.getElementById('version-label')?.textContent || '',
+    unlockedStage,
+    totalCoins,
+    userAgent: navigator.userAgent,
+    screenSize: `${window.innerWidth}x${window.innerHeight}`,
+    timestamp: new Date().toISOString(),
+  };
+}
+
+let feedbackToastTimer = null;
+
+// ネオン調トースト (ok: ターコイズ発光 / ng: ピンク発光)。3.5秒でフェードアウト
+function showFeedbackToast(message, ok) {
+  const toast = document.getElementById('feedback-toast');
+  toast.textContent = message;
+  toast.classList.remove('ok', 'ng', 'show');
+  toast.classList.add(ok ? 'ok' : 'ng');
+  void toast.offsetWidth; // 連続表示でもアニメーションをやり直す
+  toast.classList.add('show');
+  clearTimeout(feedbackToastTimer);
+  feedbackToastTimer = setTimeout(() => toast.classList.remove('show'), 3500);
+}
+
+function openFeedback() {
+  document.getElementById('feedback-debug-preview').textContent =
+    JSON.stringify(collectDebugInfo(), null, 2);
+  document.getElementById('feedback-modal').classList.remove('hidden');
+  document.getElementById('feedback-message').focus();
+}
+
+function closeFeedback() {
+  document.getElementById('feedback-modal').classList.add('hidden');
+}
+
+function initFeedback() {
+  const modal = document.getElementById('feedback-modal');
+  const form = document.getElementById('feedback-form');
+  const submitBtn = document.getElementById('btn-feedback-submit');
+
+  document.getElementById('btn-title-feedback').addEventListener('click', () => {
+    unlockAudio();
+    sfxSelect();
+    openFeedback();
+  });
+  document.getElementById('btn-feedback-close').addEventListener('click', () => {
+    sfxSelect();
+    closeFeedback();
+  });
+
+  // モーダル内のキーイベントはゲーム側 (window のリスナー) へ伝播させない。
+  // 伝播すると input.js が Z/Space/矢印等を preventDefault してテキスト入力を潰してしまう
+  for (const type of ['keydown', 'keyup']) {
+    modal.addEventListener(type, (e) => {
+      if (type === 'keydown' && e.key === 'Escape') closeFeedback();
+      e.stopPropagation();
+    });
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const message = document.getElementById('feedback-message').value.trim();
+    if (!message) {
+      showFeedbackToast('詳細内容を入力してください', false);
+      return;
+    }
+
+    submitBtn.disabled = true;
+    const label = submitBtn.textContent;
+    submitBtn.textContent = '送信中...';
+    try {
+      const res = await fetch(FEEDBACK_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({
+          category: document.getElementById('feedback-category').value,
+          message,
+          email: document.getElementById('feedback-email').value,
+          ...collectDebugInfo(),
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      form.reset();
+      closeFeedback();
+      showFeedbackToast('フィードバックを送信しました！🚀', true);
+    } catch {
+      // 失敗時はモーダルを開いたまま再操作できる状態に戻す
+      showFeedbackToast('送信に失敗しました。時間をおいて再度お試しください', false);
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = label;
+    }
+  });
+}
+
 function wireUI() {
   const on = (id, fn) => document.getElementById(id).addEventListener('click', () => {
     unlockAudio();
@@ -1102,6 +1471,8 @@ function wireUI() {
   on('btn-start', () => { hideScreens(); loadStage(1); });
   on('btn-select', () => { buildStageGrid(); showScreen('select-screen'); });
   on('btn-back', () => showScreen('title-screen'));
+  on('btn-shop', () => { renderShop(); showScreen('shop-screen'); });
+  on('btn-shop-back', () => showScreen('title-screen'));
   on('btn-next', () => {
     hideScreens();
     loadStage(Math.min(stageNum + 1, LEVEL_COUNT));
@@ -1153,6 +1524,7 @@ function fitStage() {
 initPWA();
 initInput();
 wireUI();
+initFeedback();
 applyTcSize(loadTcSize());
 fitStage();
 window.addEventListener('resize', fitStage);

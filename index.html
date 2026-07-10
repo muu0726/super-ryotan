@@ -47,6 +47,8 @@
         <div class="menu">
           <button id="btn-start" class="menu-btn">最初から</button>
           <button id="btn-select" class="menu-btn">ステージ選択</button>
+          <button id="btn-shop" class="menu-btn small">🛍 ショップ</button>
+          <button id="btn-title-feedback" class="menu-btn small">🐞 バグ報告・フィードバック</button>
         </div>
         <p class="total-coins">🪙 コイン総数: <span id="total-coins-value">0</span> 枚</p>
         <div class="tc-size-picker" aria-label="操作ボタンのサイズ">
@@ -56,7 +58,7 @@
           <button class="tc-size-btn" data-size="large">大</button>
         </div>
         <p class="hint">←→/AD: 移動&nbsp;&nbsp;Z/SPACE: ジャンプ&nbsp;&nbsp;X/SHIFT: ダッシュ&nbsp;&nbsp;ESC: 中断</p>
-        <p id="version-label">ver 1.3</p>
+        <p id="version-label">ver 1.5</p>
       </div>
 
       <!-- ステージ選択画面 -->
@@ -64,6 +66,15 @@
         <h2 class="screen-title">STAGE SELECT</h2>
         <div id="stage-grid" class="stage-grid"></div>
         <button id="btn-back" class="menu-btn small">タイトルへ戻る</button>
+      </div>
+
+      <!-- ショップ画面 (髪色の購入・付け替え) -->
+      <div id="shop-screen" class="overlay screen hidden">
+        <h2 class="screen-title">SHOP</h2>
+        <p class="shop-balance">🪙 <span id="shop-coins-value">0</span> 枚</p>
+        <p class="shop-lead">かみのいろを かえられるよ</p>
+        <div id="shop-grid" class="shop-grid"></div>
+        <button id="btn-shop-back" class="menu-btn small">タイトルへ戻る</button>
       </div>
 
       <!-- ステージクリア画面 -->
@@ -83,6 +94,38 @@
           <button id="btn-allclear-title" class="menu-btn">タイトルへ</button>
         </div>
       </div>
+
+      <!-- バグ報告・フィードバック送信モーダル -->
+      <div id="feedback-modal" class="overlay hidden">
+        <form id="feedback-form" class="feedback-panel">
+          <h2 class="feedback-title">🐞 バグ報告・フィードバック</h2>
+          <label class="fb-label">カテゴリ
+            <select id="feedback-category" name="category">
+              <option value="バグ報告">バグ報告</option>
+              <option value="要望">要望</option>
+              <option value="その他">その他</option>
+            </select>
+          </label>
+          <label class="fb-label">詳細内容<span class="fb-required">必須</span>
+            <textarea id="feedback-message" name="message" rows="4" required
+              placeholder="どのステージで、何をした時に、何が起きたかを教えてね"></textarea>
+          </label>
+          <label class="fb-label">返信用メールアドレス（任意）
+            <input id="feedback-email" name="email" type="email" placeholder="you@example.com" autocomplete="email" />
+          </label>
+          <details class="fb-debug">
+            <summary>🛠 いっしょに送信されるシステム・環境情報</summary>
+            <pre id="feedback-debug-preview"></pre>
+          </details>
+          <div class="fb-actions">
+            <button type="submit" id="btn-feedback-submit" class="menu-btn fb-submit">送信する</button>
+            <button type="button" id="btn-feedback-close" class="menu-btn small">閉じる</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- フィードバック送信結果のトースト通知 -->
+      <div id="feedback-toast" role="status" aria-live="polite"></div>
     </div>
 
     <!-- モバイル用タッチ操作 UI -->

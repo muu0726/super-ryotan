@@ -17,6 +17,8 @@ export function unlockAudio() {
     master.connect(ctx.destination);
   }
   if (ctx.state === 'suspended') ctx.resume();
+  // 解錠前に startBgm されていた場合はここから再生を開始する
+  if (bgmTheme && !bgmTimer) runBgm();
 }
 
 function tone({ type = 'square', from = 440, to = from, dur = 0.1, delay = 0, vol = 1, curve = 'exp' }) {
@@ -144,5 +146,137 @@ export function sfxKick() {
 export function sfxBreak() {
   noise({ dur: 0.15, vol: 0.8, low: 300 });
   tone({ type: 'triangle', from: 150, to: 40, dur: 0.14, vol: 0.7 });
+}
+
+// ---- チェックポイント通過音: 上昇3音ジングル ----
+export function sfxCheckpoint() {
+  tone({ type: 'square', from: 660, to: 660, dur: 0.09, vol: 0.4 });
+  tone({ type: 'square', from: 880, to: 880, dur: 0.09, delay: 0.09, vol: 0.4 });
+  tone({ type: 'square', from: 1320, to: 1320, dur: 0.24, delay: 0.18, vol: 0.4 });
+}
+
+// ============================================
+// BGM: Web Audio ルックアヘッド・ステップシーケンサ
+// 外部音源なしで矩形波リード + 三角波ベースの8bitループを生成する
+// ============================================
+
+const NOTE = (midi) => 440 * Math.pow(2, (midi - 69) / 12);
+
+// 各テーマは8分音符グリッドのループ。0 は休符 (MIDIノート番号)
+const BGM_THEMES = {
+  // 地上: 明るいCメジャーの跳ねるフレーズ
+  overworld: {
+    bpm: 116,
+    lead: [
+      72, 0, 76, 0, 79, 0, 76, 0, 74, 0, 77, 0, 81, 0, 77, 0,
+      76, 0, 79, 0, 84, 0, 79, 0, 77, 76, 74, 0, 72, 0, 0, 0,
+    ],
+    bass: [
+      48, 0, 55, 0, 48, 0, 55, 0, 50, 0, 57, 0, 50, 0, 57, 0,
+      52, 0, 59, 0, 52, 0, 59, 0, 53, 0, 55, 0, 48, 0, 43, 0,
+    ],
+  },
+  // 地下: まばらでスタッカートなAマイナー
+  underground: {
+    bpm: 96,
+    lead: [
+      69, 0, 0, 69, 0, 72, 0, 0, 67, 0, 0, 67, 0, 70, 0, 0,
+      65, 0, 0, 65, 0, 69, 0, 0, 64, 0, 67, 0, 64, 0, 0, 0,
+    ],
+    bass: [
+      45, 0, 0, 45, 0, 0, 45, 0, 43, 0, 0, 43, 0, 0, 43, 0,
+      41, 0, 0, 41, 0, 0, 41, 0, 40, 0, 0, 40, 0, 40, 0, 0,
+    ],
+  },
+  // 空中: ふわふわ漂うFメジャー
+  sky: {
+    bpm: 126,
+    lead: [
+      77, 0, 81, 0, 84, 0, 81, 0, 79, 0, 84, 0, 88, 0, 84, 0,
+      77, 0, 81, 0, 84, 0, 81, 0, 86, 84, 81, 79, 77, 0, 0, 0,
+    ],
+    bass: [
+      53, 0, 0, 0, 57, 0, 60, 0, 55, 0, 0, 0, 59, 0, 62, 0,
+      53, 0, 0, 0, 57, 0, 60, 0, 50, 0, 55, 0, 53, 0, 0, 0,
+    ],
+  },
+  // 決戦: 刻むベースの緊張感あるDマイナー
+  final: {
+    bpm: 140,
+    lead: [
+      74, 0, 74, 77, 0, 74, 0, 72, 74, 0, 74, 79, 0, 77, 0, 74,
+      74, 0, 74, 77, 0, 74, 0, 72, 70, 0, 72, 0, 74, 0, 0, 0,
+    ],
+    bass: [
+      38, 38, 0, 38, 38, 0, 38, 0, 38, 38, 0, 38, 38, 0, 38, 0,
+      36, 36, 0, 36, 36, 0, 36, 0, 34, 0, 36, 0, 38, 0, 0, 0,
+    ],
+  },
+};
+
+let bgmTheme = null;    // 再生要求中のテーマ名 (null = 停止)
+let bgmTimer = null;    // ルックアヘッドスケジューラの interval ID
+let bgmGain = null;     // BGM専用バス (停止時にまとめて消音する)
+let bgmStep = 0;
+let bgmNextTime = 0;
+
+function scheduleBgmNote(freq, type, t, dur, vol) {
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, t);
+  gain.gain.setValueAtTime(vol, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  osc.connect(gain).connect(bgmGain);
+  osc.start(t);
+  osc.stop(t + dur + 0.02);
+}
+
+function runBgm() {
+  const theme = BGM_THEMES[bgmTheme];
+  if (!theme || !ctx) return;
+  bgmGain = ctx.createGain();
+  bgmGain.gain.value = 0.55; // SFXより控えめ
+  bgmGain.connect(master);
+  bgmStep = 0;
+  bgmNextTime = ctx.currentTime + 0.06;
+
+  const tick = () => {
+    const stepDur = 60 / theme.bpm / 2; // 8分音符
+    // 先の0.2秒ぶんまで先行スケジュールする
+    while (bgmNextTime < ctx.currentTime + 0.2) {
+      const lead = theme.lead[bgmStep % theme.lead.length];
+      const bass = theme.bass[bgmStep % theme.bass.length];
+      if (lead) scheduleBgmNote(NOTE(lead), 'square', bgmNextTime, stepDur * 0.85, 0.16);
+      if (bass) scheduleBgmNote(NOTE(bass), 'triangle', bgmNextTime, stepDur * 0.9, 0.3);
+      bgmNextTime += stepDur;
+      bgmStep++;
+    }
+  };
+  tick();
+  bgmTimer = setInterval(tick, 80);
+}
+
+// BGM再生を要求する。AudioContext 未解錠なら unlockAudio 後に自動で始まる
+export function startBgm(name) {
+  if (bgmTheme === name && bgmTimer) return; // 同じ曲は継続
+  stopBgm();
+  bgmTheme = name;
+  if (ctx) runBgm();
+}
+
+export function stopBgm() {
+  bgmTheme = null;
+  if (bgmTimer) {
+    clearInterval(bgmTimer);
+    bgmTimer = null;
+  }
+  if (bgmGain) {
+    // スケジュール済みノートごとフェードアウトして切り離す
+    const g = bgmGain;
+    bgmGain = null;
+    g.gain.setTargetAtTime(0, ctx.currentTime, 0.05);
+    setTimeout(() => g.disconnect(), 300);
+  }
 }
 

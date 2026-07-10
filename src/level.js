@@ -1,9 +1,11 @@
 // ============================================
 // 全21ステージ (1〜20 + EX) のマップデータと生成ロジック
 // 記号: #=地面 B=レンガ ==浮き足場 ?=ハテナ M=きのこ入りハテナ U=使用済み
+//       T=10コインブロック(見た目はレンガ) X=隠しブロック(下から叩くと出現)
 //       o=コイン H=トゲ G=ゴール S=スタート .=空間
 //       E=クリボー風 K=ノコノコ風 F=パタパタ風
 // 各ステージは14行。短い行はパーサが '.' で右側を埋める。
+// 中間チェックポイントはロード時に各ステージ (EXを除く) へ自動配置される。
 // ============================================
 
 import { TILE } from './physics.js';
@@ -19,7 +21,7 @@ const LEVEL_1 = [
   '',
   '',
   D(71) + 'ooo',
-  D(15) + '?.M.?',
+  D(15) + '?.M.?' + D(20) + 'X',
   D(70) + '=====',
   D(3) + 'S' + D(12) + 'E' + D(10) + 'ooooo' + D(12) + 'E' + D(5) + 'ooooo' + D(33) + 'G',
   L1_GROUND,
@@ -34,7 +36,7 @@ const LEVEL_2 = [
   '',
   '',
   '',
-  D(50) + '?' + D(23) + 'ooo',
+  D(50) + '?T' + D(22) + 'ooo',
   D(24) + 'E' + D(1) + '####' + D(30) + 'ooo',
   D(3) + 'S' + D(16) + '##########' + D(10) + 'HHH' + D(8) + 'K' + D(8) + 'HHH' + D(37) + 'G',
   L2_GROUND,
@@ -87,7 +89,7 @@ const LEVEL_5 = [
   L5_PILLAR,
   L5_PILLAR,
   L5_PILLAR,
-  D(15) + '?' + D(29) + 'ooo' + D(25) + 'ooo',
+  D(15) + '?T' + D(28) + 'ooo' + D(25) + 'ooo',
   D(20) + 'oo' + D(48) + 'oo',
   D(3) + 'S' + D(18) + 'E' + D(14) + 'HH' + D(22) + 'K' + D(3) + 'HHH' + D(32) + 'G',
   L5_GROUND,
@@ -178,7 +180,7 @@ const LEVEL_11 = [
   '',
   '',
   D(55) + 'ooo',
-  D(20) + '?.?' + D(27) + 'M',
+  D(20) + '?.?' + D(27) + 'M' + D(24) + 'X',
   D(54) + '=====',
   D(3) + 'S' + D(11) + 'K' + D(14) + 'E' + D(12) + 'K' + D(20) + 'E.K' + D(30) + 'G',
   L11_GROUND,
@@ -246,7 +248,7 @@ const LEVEL_15 = [
   L15_PILLAR,
   L15_PILLAR,
   L15_PILLAR,
-  D(12) + '?' + D(20) + 'M' + D(30) + 'ooo' + D(20) + 'ooo',
+  D(12) + '?T' + D(19) + 'M' + D(30) + 'ooo' + D(20) + 'ooo',
   D(18) + 'oo' + D(30) + 'oo' + D(30) + 'oo',
   D(3) + 'S' + D(14) + 'E' + D(9) + 'HH' + D(12) + 'K' + D(9) + 'HHH' + D(14) + 'E' + D(11) + 'K' + D(6) + 'HH' + D(26) + 'G',
   L15_GROUND,
@@ -430,6 +432,7 @@ export class Level {
     this.cameraX = 0;
     this.enemies = []; // 敵のリスト
     this.items = [];   // 出現中のきのこ等のアイテム
+    this.blockCoins = new Map(); // "tx,ty" -> 10コインブロックの残りコイン数
 
     // スタート位置、ゴールポール、敵の検出
     for (let y = 0; y < this.height; y++) {
@@ -451,12 +454,54 @@ export class Level {
         } else if (ch === 'E' || ch === 'K' || ch === 'F') {
           this.enemies.push(makeEnemy(ch, x, y));
           this.grid[y][x] = '.';
+        } else if (ch === 'T') {
+          this.blockCoins.set(`${x},${y}`, 10);
         }
       }
     }
 
     this.pixelWidth = this.width * TILE;
     this.pixelHeight = this.height * TILE;
+
+    this.placeCheckpoint();
+  }
+
+  // 中間チェックポイントの自動配置 (EXステージを除く)。
+  // ステージ中央から外側へ向かって、旗を立てられる足場
+  // (足元がソリッド/すり抜け床・上2タイルが空間・隣にトゲなし) を探す。
+  placeCheckpoint() {
+    if (this.index === RAW_LEVELS.length - 1) return; // EXは一発勝負のまま
+    const mid = Math.floor(this.width / 2);
+    const maxOff = Math.floor(this.width / 3);
+    for (let off = 0; off <= maxOff; off++) {
+      for (const x of off === 0 ? [mid] : [mid - off, mid + off]) {
+        if (x < 2 || x >= this.width - 2) continue;
+        // 各列で最上段の足場のみを検討する (地下ステージの天井を避ける)
+        for (let y = 2; y < this.height - 1; y++) {
+          const ch = this.grid[y][x];
+          const footing = ch === '#' || ch === '=' || ch === 'B' || ch === 'U' || ch === 'T';
+          if (!footing) continue;
+          const clear = this.grid[y - 1][x] === '.' && this.grid[y - 2][x] === '.';
+          const noSpike =
+            this.grid[y - 1][x - 1] !== 'H' && this.grid[y - 1][x + 1] !== 'H' &&
+            this.grid[y][x - 1] !== 'H' && this.grid[y][x + 1] !== 'H';
+          if (clear && noSpike) {
+            this.checkpointX = x;  // 旗のあるタイル列
+            this.checkpointTy = y; // 旗が立つ足場タイルの行 (この上面にリスポーン)
+            return;
+          }
+          break;
+        }
+      }
+    }
+  }
+
+  // 10コインブロックからコインを1枚取り出し、残数を返す
+  takeBlockCoin(tx, ty) {
+    const key = `${tx},${ty}`;
+    const left = (this.blockCoins.get(key) ?? 1) - 1;
+    this.blockCoins.set(key, left);
+    return left;
   }
 
   tileAt(tx, ty) {

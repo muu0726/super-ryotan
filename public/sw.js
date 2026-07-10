@@ -4,7 +4,9 @@
 // ハッシュ付きアセット・画像はキャッシュ優先。
 // ============================================
 
-const CACHE = 'super-ryotan-v1';
+// キャッシュ名のプレースホルダはビルド時に vite.config.js のプラグインが
+// パッケージバージョン+ビルド時刻へ置換する (デプロイごとに旧キャッシュを破棄)
+const CACHE = 'super-ryotan-__CACHE_VERSION__';
 const PRECACHE = [
   './',
   'manifest.webmanifest',

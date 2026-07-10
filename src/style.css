@@ -281,6 +281,254 @@ canvas#game {
 }
 
 
+/* ---- ショップ画面 ---- */
+.shop-balance {
+  color: var(--accent);
+  font-size: clamp(13px, 2.6cqw, 18px);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  background: rgba(255, 210, 63, 0.08);
+  border: 1px solid rgba(255, 210, 63, 0.35);
+  border-radius: 999px;
+  padding: 0.3em 1.4em;
+}
+
+.shop-balance #shop-coins-value {
+  color: var(--text);
+}
+
+.shop-lead {
+  color: var(--text-dim);
+  font-size: clamp(10px, 2cqw, 14px);
+  letter-spacing: 0.1em;
+}
+
+.shop-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  width: min(84%, 560px);
+}
+
+.shop-item {
+  font: inherit;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 10px 6px;
+  border-radius: 12px;
+  border: 2px solid var(--text-dim);
+  background: var(--bg-panel);
+  color: var(--text);
+  cursor: pointer;
+  transition: transform 0.12s, box-shadow 0.12s, border-color 0.12s;
+}
+
+.shop-item:hover:not(:disabled) {
+  transform: scale(1.05);
+  box-shadow: 0 0 18px rgba(255, 210, 63, 0.25);
+}
+
+.shop-item .swatch {
+  width: clamp(22px, 4.5cqw, 32px);
+  height: clamp(22px, 4.5cqw, 32px);
+  border-radius: 50% 50% 46% 46%;
+  border: 2px solid rgba(238, 241, 255, 0.5);
+}
+
+.shop-item .item-name {
+  font-size: clamp(10px, 2cqw, 13px);
+  font-weight: 700;
+}
+
+.shop-item .item-state {
+  font-size: clamp(9px, 1.8cqw, 12px);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.shop-item.selected {
+  border-color: var(--accent);
+  background: rgba(255, 210, 63, 0.12);
+  box-shadow: 0 0 18px var(--border-glow);
+}
+
+.shop-item.locked .item-state {
+  color: var(--accent2);
+}
+
+.shop-item.unaffordable {
+  opacity: 0.55;
+}
+
+.shop-item.unaffordable .item-state {
+  color: var(--danger);
+}
+
+/* ---- バグ報告・フィードバックモーダル ---- */
+#feedback-modal {
+  z-index: 20; /* タイトル画面 (z:10) より上 */
+  background: rgba(8, 10, 22, 0.7);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.feedback-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(88%, 460px);
+  max-height: 92%;
+  overflow-y: auto;
+  padding: clamp(14px, 3cqw, 26px);
+  text-align: left;
+  background: var(--bg-panel);
+  border: 2px solid var(--accent);
+  border-radius: 16px;
+  box-shadow:
+    0 0 30px rgba(255, 210, 63, 0.25),
+    inset 0 0 24px rgba(78, 205, 196, 0.06);
+  animation: fb-pop 0.24s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+
+@keyframes fb-pop {
+  from { opacity: 0; transform: scale(0.9) translateY(12px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.feedback-title {
+  text-align: center;
+  font-size: clamp(15px, 3.4cqw, 22px);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  text-shadow: 0 0 18px var(--border-glow);
+}
+
+.fb-label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  color: var(--text-dim);
+  font-size: clamp(10px, 2cqw, 13px);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+.fb-required {
+  color: var(--danger);
+  font-size: 0.85em;
+  margin-left: 6px;
+}
+
+#feedback-modal input,
+#feedback-modal select,
+#feedback-modal textarea {
+  font: inherit;
+  font-size: clamp(12px, 2.4cqw, 15px);
+  color: var(--text);
+  background: rgba(11, 14, 26, 0.85);
+  border: 1.5px solid rgba(238, 241, 255, 0.25);
+  border-radius: 10px;
+  padding: 0.5em 0.8em;
+  outline: none;
+  -webkit-user-select: text;
+  user-select: text;
+  transition: border-color 0.15s ease, box-shadow 0.25s ease;
+}
+
+#feedback-modal textarea {
+  resize: vertical;
+  min-height: 4.5em;
+}
+
+#feedback-modal input:focus,
+#feedback-modal select:focus,
+#feedback-modal textarea:focus {
+  border-color: var(--accent);
+  box-shadow:
+    0 0 10px rgba(255, 210, 63, 0.5),
+    0 0 22px rgba(255, 210, 63, 0.22);
+}
+
+.fb-debug {
+  border: 1px solid rgba(78, 205, 196, 0.3);
+  border-radius: 10px;
+  padding: 7px 10px;
+  background: rgba(11, 14, 26, 0.5);
+}
+
+.fb-debug summary {
+  cursor: pointer;
+  color: var(--accent2);
+  font-size: clamp(10px, 2cqw, 13px);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+
+.fb-debug pre {
+  margin-top: 7px;
+  max-height: 110px;
+  overflow: auto;
+  font-size: clamp(9px, 1.8cqw, 11px);
+  line-height: 1.55;
+  color: var(--text-dim);
+  white-space: pre-wrap;
+  word-break: break-all;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.fb-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 4px;
+}
+
+.fb-submit:disabled {
+  opacity: 0.55;
+  cursor: wait;
+  transform: none;
+}
+
+/* ---- フィードバック結果のトースト通知 ---- */
+#feedback-toast {
+  position: absolute;
+  top: 9%;
+  left: 50%;
+  transform: translate(-50%, -14px);
+  z-index: 30;
+  max-width: 86%;
+  padding: 0.7em 1.6em;
+  border-radius: 999px;
+  font-size: clamp(11px, 2.4cqw, 15px);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-align: center;
+  color: var(--text);
+  background: var(--bg-panel);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.45s ease, transform 0.45s ease;
+}
+
+#feedback-toast.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+#feedback-toast.ok {
+  border: 1.5px solid var(--accent2);
+  box-shadow: 0 0 18px rgba(78, 205, 196, 0.55), 0 0 40px rgba(78, 205, 196, 0.25);
+}
+
+#feedback-toast.ng {
+  border: 1.5px solid var(--danger);
+  box-shadow: 0 0 18px rgba(255, 92, 122, 0.55), 0 0 40px rgba(255, 92, 122, 0.25);
+}
+
 /* ---- モバイル タッチUI ---- */
 #touch-ui {
   display: none;
