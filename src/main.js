@@ -195,9 +195,10 @@ function loadStage(n) {
 
 // ステージ番号 → BGMテーマ
 function bgmThemeFor(n) {
-  if (n === 5 || n === 15) return 'underground';
-  if (n === 3 || n === 9 || n === 12 || n === 16 || n === 18) return 'sky';
-  if (n === 10 || n === 20 || n === EX_STAGE) return 'final';
+  if (n === 5 || n === 15 || n === 23 || n === 28) return 'underground';
+  if (n === 3 || n === 9 || n === 12 || n === 16 || n === 18 ||
+      n === 22 || n === 24 || n === 26 || n === 29) return 'sky';
+  if (n % 10 === 0 || n === EX_STAGE) return 'final';
   return 'overworld';
 }
 
